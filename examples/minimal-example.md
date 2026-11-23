@@ -49,12 +49,16 @@ Agent 加载本 Skill 后按 SKILL.md 的 P1–P8 执行：写骨架 → 纳排�
     "evidence_rows": [{"id": "E1", "source_id": "S1", "excerpt": "...(逐字短引，示意)", "location": "p.4 表2", "claim": "X 提升 Y 抗拉强度（示意）", "strength": "suggestive", "note": "单一批次"}]
   },
   "audit": {
-    "citation_audit": {"checked": 1, "supported": 1, "fixed": 0, "dropped": 0, "items": [{"claim_id": "C1", "verdict": "ok", "reason": "摘录覆盖论断"}]},
+    "citation_audit": {"checked": 2, "supported": 2, "fixed": 0, "dropped": 0, "items": [{"claim_id": "C1", "verdict": "ok", "reason": "摘录覆盖论断"}, {"claim_id": "C2", "verdict": "ok", "reason": "综合结论未超出 E1 的证据范围"}]},
     "coverage_check": {"included_sources_cited": "1/1", "themes_with_evidence": "1/1", "evidence_rows_used": "1/1", "issues": []},
     "wording_audit": {"strong_wording_checked": 1, "corrected": 1, "items": [{"claim_id": "C1", "before": "证实", "after": "初步表明"}]}
   },
   "uncertainty": {"conflicts": [], "biases": [{"type": "单一数据源", "description": "仅一篇全文", "impact": "结论强度受限"}], "gaps": [{"id": "G1", "gap": "无多批次重复实验", "evidence_basis": "S1 未报告"}], "undetermined": [{"item": "S2 是否与 S1 结论一致", "reason": "仅摘要", "impact": "无法计入强度判断"}]},
-  "sources": [{"id": "S1", "authors": "示意", "year": "2024", "title": "...(题录 A)", "venue_or_doi": "示意", "full_text_available": true}],
+  "sources": [
+    {"id": "S1", "authors": "示意", "year": "2024", "title": "...(题录 A)", "venue_or_doi": "示意", "full_text_available": true},
+    {"id": "S2", "authors": "示意", "year": "未知", "title": "...(题录 B)", "venue_or_doi": "未知", "full_text_available": false},
+    {"id": "S3", "authors": "示意", "year": "未知", "title": "...(题录 C)", "venue_or_doi": "未知", "full_text_available": false}
+  ],
   "change_record": [{"version": "v1", "changed": "audit", "reason": "措辞审计修正 1 处"}]
 }
 ```

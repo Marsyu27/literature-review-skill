@@ -7,7 +7,7 @@
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
 | `case_id` | string | 是 | 输入中的案例标识，**原样保留**，不改写不拼接 |
-| `status` | enum | 是 | `success`（完整可用）/ `partial`（有结果但有限制）/ `failed`（未产出可用结果）；进行中骨架用 `in_progress` |
+| `status` | enum | 是 | 最终交付只取 `success`（完整可用）/ `partial`（有结果但有限制）/ `failed`（未产出可用结果）；进行中骨架用 `in_progress`，交付前必须改为前三者之一 |
 | `research_product` | object | 是 | 研究产物：综述/筛选/趋势/选题评估结果 |
 | `evidence_matrix` | object | 是 | 证据矩阵：筛选流、筛选记录、比较矩阵、证据行 |
 | `audit` | object | 是 | 第二遍审计结果（见下） |
@@ -33,7 +33,7 @@
 
 ## audit（第二遍审计结果，必填）
 
-- `citation_audit`：`{checked, supported, fixed, dropped}` 计数 + `items` 数组，每条 `{claim_id, verdict(ok|revised|downgraded|dropped), reason}`。
+- `citation_audit`：`{checked, supported, fixed, dropped}` 计数 + `items` 数组，每条 `{claim_id, verdict(ok|revised|downgraded|dropped), reason}`。`checked` 必须等于全部正文论断与综合结论的数量，每条论断均有对应审计记录。
 - `coverage_check`：`{included_sources_cited, themes_with_evidence, evidence_rows_used}` 计数 + `issues` 数组（未达标项及处置）。
 - `wording_audit`：`{strong_wording_checked, corrected}` 计数 + `items` 数组。
 
@@ -46,7 +46,7 @@
 
 ## sources
 
-数组，每条 `{id, authors, year, title, venue_or_doi, full_text_available}`。只有材料里真实存在的元数据才写；缺失字段标「未知」，不补造。
+数组，覆盖**所有进入筛选的文献**（含排除项），每条 `{id, authors, year, title, venue_or_doi, full_text_available}`；`id` 与筛选记录一致。只有材料里真实存在的元数据才写；缺失字段标「未知」，不补造。
 
 ## change_record
 

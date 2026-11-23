@@ -31,7 +31,7 @@
 - `SKILL.md`：主提示，含固定工作流与硬规则。
 - `references/`：输出字段定义、筛选、证据提取、主题归纳、写作、审计、运行环境七份规程，Agent 按需加载。
 - `templates/`：筛选记录、比较矩阵、证据表、综述草稿、审计记录五份模板。
-- `scripts/validate_result.py`：结构 + 交叉引用 + 计数一致性校验（0 error 方可交付）。
+- `scripts/validate_result.py`：结构 + 交叉引用 + 筛选流恒等式 + 论断审计覆盖校验（0 error 方可交付）；具体案例的 `output_contract` 仍须另行逐字段核对。
 - `examples/minimal-example.md`：最小调用示例（示意数据，非正式案例结果）。
 
 ## 关键设计
@@ -48,5 +48,5 @@
 
 ## 维护
 
-- 版本：v1.0（2026-11）。
-- 自查：改动后运行 `python3 scripts/validate_result.py examples/…`（对示例输出）确认脚本与契约一致；字段变更须同步 `references/output-schema.md` 与校验脚本。
+- 版本：v1.1（2026-11）。v1.1 修正流程编号，收紧最终状态枚举，补齐筛选流恒等式、来源覆盖与论断审计覆盖校验。
+- 自查：改动后从 `examples/minimal-example.md` 提取示例 `result.json`，运行 `python3 scripts/validate_result.py` 确认脚本与契约一致；字段变更须同步 `references/output-schema.md` 与校验脚本。

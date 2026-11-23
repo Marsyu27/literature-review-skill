@@ -9,7 +9,7 @@ description: "围绕固定研究问题组织文献证据并生成可核验综述
 
 本 Skill 与通用流程的两个硬性区别：
 
-1. **两遍架构**：第一遍生成（步骤 P1–P5），第二遍审计（P6）。审计不是自查感想，而是逐条重读"论断 ↔ 证据摘录"并修复，审计结果写入 `result.json.audit`。未审计的草稿不得交付。
+1. **两遍架构**：第一遍生成（步骤 P1–P6），第二遍审计（P7），最后校验交付（P8）。审计不是自查感想，而是逐条重读"论断 ↔ 证据摘录"并修复，审计结果写入 `result.json.audit`。未审计的草稿不得交付。
 2. **双向回链**：论断有编号（C1、C2…），证据行有编号（E1、E2…），综述正文句末标注 `(E3; E7)`，文末附论断↔证据对照表；核验者从任何一句都能跳到证据行，再跳到原文位置。
 
 ## 一、运行契约与预算管理
@@ -20,7 +20,7 @@ description: "围绕固定研究问题组织文献证据并生成可核验综述
 - 工作目录 `/app/work`；最终结果放 `/app/output`，其中 `result.json` 必须含 `case_id`（原样保留）并覆盖输入 `output_contract` 声明的全部字段；另交付 `review.md`（综述正文）与 `evidence_matrix.md`（筛选记录+比较矩阵+证据表）。
 - 交互环境：输入路径不明时询问用户，不凭空假设。
 
-**预算检查点（约 64 次模型请求、900 秒）**：读完输入立即写 `result.json` 骨架（`case_id` + `status: "in_progress"` + 各字段空数组）到 `/app/output/result.json`，之后每完成一步就地更新。预算消耗过半时停止扩张性工作，按"筛选记录 → 证据行 → 综合结论 → 主题 → 草稿正文 → 审计"的优先级收尾；来不及完成的部分标 `status: "partial"` 并写入 `uncertainty.undetermined`。任何情况下不得让 `result.json` 缺失或停留在骨架状态。
+**预算检查点（约 64 次模型请求、900 秒；单次响应上限 16,384 tokens，含推理）**：读完输入立即写 `result.json` 骨架（`case_id` + `status: "in_progress"` + 各字段空数组）到 `/app/output/result.json`，之后每完成一步就地更新。预算消耗过半时停止扩张性工作，按"筛选记录 → 证据行 → 综合结论 → 主题 → 草稿正文 → 审计"的优先级收尾；来不及完成的部分标 `status: "partial"` 并写入 `uncertainty.undetermined`。任何情况下不得让 `result.json` 缺失或停留在骨架状态，最终只能交付 `success`、`partial` 或 `failed`。
 
 ## 二、固定工作流
 
@@ -60,7 +60,7 @@ description: "围绕固定研究问题组织文献证据并生成可核验综述
 
 ### P8 写输出与校验
 
-写 `review.md`、`evidence_matrix.md`、`result.json`，运行 `python3 scripts/validate_result.py result.json` 做结构与交叉引用校验，修到无 error 后交付。输出字段定义见 [references/output-schema.md](references/output-schema.md)。
+写 `review.md`、`evidence_matrix.md`、`result.json`，先逐项核对输入 `output_contract` 的全部字段，再运行 `python3 scripts/validate_result.py result.json` 做结构与交叉引用校验，修到无 error 后交付。默认脚本不能替代对具体案例契约的逐字段核对。输出字段定义见 [references/output-schema.md](references/output-schema.md)。
 
 ## 三、硬规则（违反即返工）
 

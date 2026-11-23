@@ -35,7 +35,16 @@ def main():
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
         print("usage: validate_result.py RESULT.json", file=sys.stderr)
         return 2
-    data = load(sys.argv[1])
+    try:
+        data = load(sys.argv[1])
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        print(f"ERROR: cannot load a valid UTF-8 JSON object: {exc}")
+        print("FAIL: 1 error(s), 0 warning(s)")
+        return 1
+    if not isinstance(data, dict):
+        print("ERROR: result.json top level must be a JSON object")
+        print("FAIL: 1 error(s), 0 warning(s)")
+        return 1
     errors, warnings = [], []
 
     # ---- top level ----
@@ -43,8 +52,10 @@ def main():
                   "uncertainty", "sources", "change_record"):
         if field not in data:
             errors.append(f"missing top-level field: {field}")
-    if data.get("status") not in ("success", "partial", "failed", "in_progress"):
-        errors.append(f"status must be success|partial|failed|in_progress, got {data.get('status')!r}")
+    if not isinstance(data.get("case_id"), str) or not data.get("case_id", "").strip():
+        errors.append("case_id must be a non-empty string preserved from the input")
+    if data.get("status") not in ("success", "partial", "failed"):
+        errors.append(f"final status must be success|partial|failed (not in_progress), got {data.get('status')!r}")
 
     rp = data.get("research_product", {})
     for field in ("research_question", "type", "themes", "sections", "conclusions"):
@@ -88,6 +99,8 @@ def main():
     for rec in recs:
         if rec.get("status") not in SCREENING_STATUS:
             errors.append(f"screening record {rec.get('id','?')}: bad status {rec.get('status')!r}")
+        if rec.get("id") not in sources:
+            errors.append(f"screening record {rec.get('id','?')}: no matching entry in sources")
         if not rec.get("reason"):
             warnings.append(f"screening record {rec.get('id','?')}: empty reason")
     flow = em.get("screening_flow")
@@ -95,6 +108,9 @@ def main():
         cnt = {}
         for rec in recs:
             cnt[rec.get("status")] = cnt.get(rec.get("status"), 0) + 1
+        for key, value in flow.items():
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                errors.append(f"screening_flow.{key} must be a non-negative integer")
         checks = [
             ("included", cnt.get("included", 0)),
             ("abstract_only", cnt.get("abstract_only", 0)),
@@ -105,8 +121,18 @@ def main():
         for key, actual in checks:
             if key in flow and flow[key] != actual:
                 errors.append(f"screening_flow.{key}={flow[key]} but records have {actual}")
-        if "screened" in flow and flow["screened"] != len(recs) - cnt.get("excluded_duplicate", 0):
+        expected_screened = len(recs) - cnt.get("excluded_duplicate", 0)
+        if "identified" in flow and flow["identified"] != len(recs):
+            errors.append(f"screening_flow.identified={flow['identified']} but there are {len(recs)} records")
+        if "screened" in flow and flow["screened"] != expected_screened:
             errors.append("screening_flow.screened inconsistent with records")
+        if all(key in flow for key in ("identified", "duplicates_removed", "screened")):
+            if flow["identified"] != flow["duplicates_removed"] + flow["screened"]:
+                errors.append("screening_flow violates identified = duplicates_removed + screened")
+        screened_parts = ("included", "abstract_only", "excluded_irrelevant", "excluded_other")
+        if all(key in flow for key in ("screened", *screened_parts)):
+            if flow["screened"] != sum(flow[key] for key in screened_parts):
+                errors.append("screening_flow violates screened = included + abstract_only + excluded_irrelevant + excluded_other")
     else:
         warnings.append("screening_flow missing; counts cannot be cross-checked")
 
@@ -139,6 +165,19 @@ def main():
         for sub in ("citation_audit", "coverage_check", "wording_audit"):
             if sub not in audit:
                 errors.append(f"audit missing sub-audit: {sub}")
+        citation_audit = audit.get("citation_audit")
+        if isinstance(citation_audit, dict):
+            if "checked" not in citation_audit:
+                errors.append("citation_audit missing checked count")
+            elif citation_audit["checked"] != len(paragraphs):
+                errors.append(f"citation_audit.checked={citation_audit['checked']} but there are {len(paragraphs)} claims")
+            if "items" in citation_audit:
+                audited_ids = [item.get("claim_id") for item in citation_audit["items"]
+                               if isinstance(item, dict)]
+                for cid in sorted(set(claim_ids) - set(audited_ids)):
+                    errors.append(f"claim {cid} has no citation audit item")
+                for cid in sorted(set(audited_ids) - set(claim_ids)):
+                    errors.append(f"citation audit references unknown claim {cid}")
 
     # ---- coverage warnings ----
     cited = {r.get("source_id") for r in rows if r.get("id") in used_eids}

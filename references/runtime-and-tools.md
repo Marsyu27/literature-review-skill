@@ -25,4 +25,4 @@
 
 - 中间产物（矩阵草稿、分批提取）放 `/app/work`。
 - 交付物放 `/app/output`：`result.json`、`review.md`、`evidence_matrix.md`；有可编辑 Office/图产物时另附真实渲染的 PDF/PNG 预览。
-- 交付前运行 `scripts/validate_result.py result.json`；脚本为纯 Python 标准库，无第三方依赖。
+- 交付前先按具体案例的 `output_contract` 逐字段核对，再运行 `scripts/validate_result.py result.json`；默认校验脚本无法获知输入契约的额外字段，不能替代契约核对。脚本为纯 Python 标准库，无第三方依赖。
