@@ -15,7 +15,8 @@ LLM 不再手算 bbox XML。
      重复出现，且该文本不同时出现在正文区 → 标 header/footer 并从正文流剔除；
      未命中的带内词必须按当页栏界重新分列、重新成行，不得注入预先合并的整行；
   5. 组块：先按当页栏界分词，词成行（yMin 容差），行成块（垂直间距阈值或行首 x 跳变），
-     每块给 id/page/column/order/bbox/text/kind（body/header/footer/table_candidate）；
+     每块给 id/page/column/order/bbox/text/kind（body/header/footer/table_candidate）
+     和 source_lines=[{text,bbox}]；原始 text 与表格 cells 不被 zone 后处理改写；
   6. 表格候选：块内 ≥2 行共享 ≥3 个对齐 x 起始列（每列覆盖 ≥60% 行）且对齐列
      覆盖 ≥50% 词 → table_candidate，附 rows（TSV）与单元格 bbox。
 
@@ -23,7 +24,9 @@ LLM 不再手算 bbox XML。
   {"pages", "mode":"layout", "columns", "column_boundary", "page_layouts": [...],
    "blocks": [...], "headers_footers": [...], "tables": [...]}
   顶层 columns/column_boundary 为兼容汇总字段；page_layouts 逐页给
-  page/columns/column_boundary/n_cols/order。混合版式的顶层 columns="mixed"。
+  page/columns/column_boundary/n_cols/order/width/height。混合版式 columns="mixed"。
+  每块附 source_lines=[{text,bbox}] 原始行证据。本文件只负责初排；
+  通栏/纵向 zone 由 scripts/refine_layout.py 另行处理并独立核守恒。
 
 用法：python3 scripts/parse_pdf.py --pdf paper.pdf --out blocks.json
 退出码：0 成功；2 pdftotext 缺失或执行失败（输出 text-only 降级 JSON）。
@@ -323,6 +326,9 @@ def main():
             "column_boundary": round(boundary, 1) if boundary is not None else None,
             "n_cols": n_cols,
             "order": "left-to-right" if n_cols == 2 else "top-to-bottom",
+            # 页面真实坐标范围供 refine_layout.py 使用；不改变既有判栏/初排。
+            "width": p["width"],
+            "height": p["height"],
         })
 
         def col_of(x, columns=columns, boundary=boundary):
@@ -402,6 +408,14 @@ def main():
                          round(blk["x1"], 1), round(blk["y1"], 1)],
                 "text": "\n".join(ln["text"] for ln in blk["lines"]),
                 "kind": kind,
+                # 原始逐行证据：后续 zone 细化只能使用这些真实 line bbox，
+                # 不得从语义标注或 translated text 反推几何。
+                "source_lines": [
+                    {"text": ln["text"],
+                     "bbox": [round(ln["x0"], 1), round(ln["y0"], 1),
+                              round(ln["x1"], 1), round(ln["y1"], 1)]}
+                    for ln in blk["lines"]
+                ],
             }
             if kind not in ("header", "footer"):
                 order += 1
