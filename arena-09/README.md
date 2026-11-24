@@ -18,13 +18,22 @@ references/provenance-metadata.md       # 来源元数据与溯源链
 references/quality-check.md             # 质量检查清单
 references/output-schema.md             # result.json / JSON-LD 契约（含 @context 约定）
 examples/nanopub-examples.md            # 20 条标注为示例的断言
-scripts/validate_nanopub.py             # 导出前记录质检 + 最终 JSON-LD 严格质检（纯标准库）
-src/reproduce.py                        # 自检入口
+scripts/export_nanopub.py               # records → canonical JSON-LD 唯一导出器（纯标准库）
+scripts/validate_nanopub.py             # records-only + 最终 record↔JSON-LD 严格等性质检
+src/reproduce.py                        # 真实 CLI 正反回归（tempfile，无测试提交产物）
 ```
 
 ## 调用方式
 
-加载 Skill 后，Agent 按 SKILL.md 六步流程：读输入→断言拆解→证据绑定→来源元数据→**导出前记录质检**→**JSON-LD 导出→最终严格质检**。导出前使用 `--records-only`，最终严格质检不带该参数，两步不能互相替代。
+加载 Skill 后，Agent 按 SKILL.md 六步流程：读输入→断言拆解→证据绑定→来源元数据→**records-only 质检**→**export_nanopub.py 机械导出→最终等价质检**。模型只维护 `result.nanopublications`，不再独立双写 JSON-LD 或 pubinfo graph。
+
+```bash
+python scripts/validate_nanopub.py --records-only /app/output/result.json
+python scripts/export_nanopub.py /app/output/result.json --out-dir /app/output/nanopubs --update-result
+python scripts/validate_nanopub.py /app/output/result.json [extra.jsonld ...]
+```
+
+每条 `id=np-NNN`（唯一且从 np-001 连续）生成一个同名 JSON-LD，URN 为 `urn:nanopub:<case_id>:<n>`。canonical 映射中 @context 固定，`@graph` 恰为 assertion/evidence/provenance/pubinfo 四对象列表：assertion 保留 SPO/condition 与 status/basis；evidence 保留三键（unverified 空值亦不删结构）；provenance 保留记录字段并派生 `<urn>#evidence` 链接和固定方法模板；pubinfo 只来自 `result.pubinfo`。完整字段映射见 `references/output-schema.md`。
 
 ## 输出契约
 
@@ -36,12 +45,13 @@ src/reproduce.py                        # 自检入口
 
 ## 质检
 
-分两步机检，不能只做其中一步：
+三道交付关口（两次机检，中间只能由 exporter 机械导出）：
 
-1. 导出前：`python scripts/validate_nanopub.py --records-only /app/output/result.json`，校验谓词、assertion/evidence/provenance 与 evidence 状态规则。仅 `status=unverified` 的空 evidence 可 warning 放行，其他状态空 evidence 为 error。
-2. JSON-LD 导出后：`python scripts/validate_nanopub.py /app/output/result.json [extra.jsonld ...]` 做最终严格质检，要求至少一个 JSON-LD，并逐文档检查 `@context`、assertion/evidence/provenance/pubinfo 四类 named graph 和 URN 顶层 `@id` 形态。完全没有 JSON-LD 为 error/退出码 1，绝不打印“@context 校验完成”。
+1. 导出前 records-only：`python scripts/validate_nanopub.py --records-only /app/output/result.json`，校验谓词、assertion/evidence/provenance、连续唯一 id 与 evidence 状态规则。仅 `status=unverified` 的空 evidence 可 warning 放行；成功输出明确不代表 Final。
+2. 机械导出：`python scripts/export_nanopub.py /app/output/result.json --out-dir /app/output/nanopubs --update-result`。只从 records 和 result.pubinfo 生成规范文件，更新来源清单并清除内嵌陈旧字段；partial/unverified 也可按真实内容导出。
+3. 最终等价：`python scripts/validate_nanopub.py /app/output/result.json [extra.jsonld ...]`。除 `@context`、四 graph 与 URN 形态外，严格检查文档数=record 数、URN 一一对应及全部内容映射。校验复用 `build_document` 做 canonical JSON 树全等比较（对象键序无关，数组顺序及字段/值缺多或改变均相关）。内嵌、`jsonld_files` 与 CLI 附件合并计数，重复来源及额外/缺失文档均失败；不能借附件绕过等价。
 
-两步退出码非 0 时均须按错误清单修正。partial 若有输出也必须满足输出契约，并在 `status_reason`/`uncertainties` 如实列出未完成范围与 JSON-LD 等缺口；warning 不能替代最终严格质检。
+任一关口退出码非 0 时均须按错误清单修正。partial 若有输出也必须满足输出契约，并在 `status_reason`/`uncertainties` 如实列出未完成范围与 JSON-LD 等缺口；warning 不能替代最终严格质检。
 
 ## 异常处理与限制
 

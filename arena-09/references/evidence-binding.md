@@ -17,6 +17,10 @@
 
 - 间接推论必须在 `basis` 写明推导步骤，否则视为证据不足。
 
+## 机械导出中的证据等价
+
+Agent 只维护 record.evidence，不手工另写 evidence graph。exporter 原值映射 `evidence_text` / `evidence_location` / `evidence_type`；合法 `unverified` 空证据的三个 JSON-LD 值均为 `""`，但 evidence graph 与三键结构始终保留并产生 warning。最终 validator 复用 canonical 构造逐项比较，文本、位置或类型任一变化都失败；partial/unverified 不会因此获得豁免。
+
 ## 位置（Evidence Location）
 
 - 格式：`page=N` + `§章节` + `¶段落` + `Fig./Table/Eq. 编号`（按可用粒度）。

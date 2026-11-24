@@ -53,14 +53,17 @@ description: >-
 ```
 python scripts/validate_nanopub.py --records-only /app/output/result.json
 ```
-此步只机检谓词词表、三字段与 evidence 状态规则，**不代表 JSON-LD 已通过**。`status=unverified` 的空 evidence 会留下可解释 warning，其他状态的空 evidence 是 error。
+此步只机检谓词词表、record 必填字段、唯一连续 id 与 evidence 状态规则，**不导出 JSON-LD，不代表 JSON-LD 或 Final 已通过**。`status=unverified` 的空 evidence 会留下可解释 warning，其他状态的空 evidence 是 error。
 
-### 第 6 步：JSON-LD 导出 + 最终严格质检（读得懂）
-写 `/app/output/result.json`（见 references/output-schema.md），并导出 JSON-LD（含 `@context`、`urn:nanopub:<case_id>:<n>` 顶层 `@id` 与 `assertion` / `evidence` / `provenance` / `pubinfo` 四个 named graph），字段与序列化形态符合约定，下游程序可直接解析。导出后必须再次运行最终严格质检：
+### 第 6 步：records-only 已通过 → 机械导出 → 最终等价质检（读得懂）
+确认第 5 步 records-only 已通过后，**只运行 exporter，从 `/app/output/result.json` 的 `nanopublications` 与 `pubinfo` 机械生成 JSON-LD；模型不得独立另写、补写或同步第二份 JSON-LD/pubinfo**（完整 canonical 映射见 references/output-schema.md）：
 ```
+python scripts/export_nanopub.py /app/output/result.json --out-dir /app/output/nanopubs --update-result
 python scripts/validate_nanopub.py /app/output/result.json [extra.jsonld ...]
 ```
-完全没有 JSON-LD、缺 `@context`、缺任一 named graph 或 URN `@id` 形态不符均为 error，退出码非 0；修正后复检通过才可交付。
+每条 record 的 id 必须唯一、连续且为 `np-NNN`，生成同名文件及 `urn:nanopub:<case_id>:<n>`；`@context` 固定，`@graph` 恰为 assertion/evidence/provenance/pubinfo 四对象列表。`--update-result` 仅更新 `jsonld_files` 并清除内嵌 `jsonld` / `json_ld` 陈旧字段，不删其他文件。partial/unverified 也按真实 records 导出，空证据仍保留 evidence graph 三键。
+
+最终 validator 复用 exporter 的 `build_document` 做 canonical JSON 树严格全等比较：文档数必须等于 record 数，URN 一一对应，SPO/condition、evidence、status/basis、provenance 链接与字段、pubinfo 全部逐项相符；对象键顺序无关，数组顺序和任何字段/值缺多或改变都会导致失败。内嵌字段、`jsonld_files` 和 CLI 附件合并计数，额外来源不能绕过数量或内容映射。缺文档、多文档、重复 URN、非 canonical 外壳或任何内容不一致均为 error，修正 records 后重新机械导出并复检才可交付。
 
 ## 检查点与降级
 
@@ -92,5 +95,7 @@ python scripts/validate_nanopub.py /app/output/result.json [extra.jsonld ...]
 - `references/provenance-metadata.md` —— 来源元数据与溯源链
 - `references/quality-check.md` —— 质量检查清单
 - `references/output-schema.md` —— result.json / JSON-LD 字段契约
-- `scripts/validate_nanopub.py` —— 导出前记录质检与最终 JSON-LD 严格质检（词表/字段/@context/四类 named graph/URN @id）
+- `scripts/export_nanopub.py` —— records 与 result.pubinfo → canonical JSON-LD 的唯一机械导出器
+- `scripts/validate_nanopub.py` —— records-only 与最终严格等性质检（词表/字段/@context/四 graph/URN/完整内容映射）
+- `src/reproduce.py` —— 真实 CLI 正反回归；仅在 tempfile 写测试产物
 - `examples/nanopub-examples.md` —— 标注为示例的断言样例（非正式案例）

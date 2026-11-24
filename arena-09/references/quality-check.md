@@ -14,6 +14,7 @@
 | 6 | 限定词丢失 | 条件/范围/显著性保留，缺失则 uncertain |
 | 7 | 断言与证据冲突 | 冲突则保留两处原文并标 conflict |
 | 8 | 数值/单位失真 | 数值、单位、显著性逐字保留 |
+| 9 | record/JSON-LD 双源漂移 | 不手工双写；机械导出后 canonical 全等且数量、URN 一一对应 |
 
 ## 检查失败处置
 
@@ -25,9 +26,12 @@
 
 每条断言记录 `basis`：写明"为什么这条证据充分/为什么关系方向是 A→B"，供第三方复核。
 
-## 两步机检
+## records-only → 机械导出 → 最终等价质检
 
-先运行 `python scripts/validate_nanopub.py --records-only /app/output/result.json` 做导出前记录质检；再导出 JSON-LD，运行 `python scripts/validate_nanopub.py /app/output/result.json [extra.jsonld ...]` 做最终严格质检。前者不能替代后者；最终完全没有 JSON-LD 必须失败。
+1. 先运行 `python scripts/validate_nanopub.py --records-only /app/output/result.json`。这只检查 records，**不能声称 JSON-LD 或 Final 已通过**。
+2. 模型不另写 JSON-LD，运行 `python scripts/export_nanopub.py /app/output/result.json --out-dir /app/output/nanopubs --update-result`，从 records 与 `result.pubinfo` 生成 canonical 文件。
+3. 运行 `python scripts/validate_nanopub.py /app/output/result.json [extra.jsonld ...]` 做最终等价质检。validator 复用 `build_document`，要求 canonical 四 graph 列表与现算文档 JSON 树严格全等，并检查文档数=record 数、id 连续唯一、URN 一一对应及 SPO/condition、evidence、status/basis、provenance、pubinfo。对象键序无关，数组顺序及额外/缺失/改变字段均会失败。
+4. 内嵌 `jsonld` / `json_ld`、`jsonld_files` 和 CLI 附件都合并计数；少文档、多文档、重复 URN 或重复来源必须失败，不能借附件绕过等价。两条记录内容不同却只交一条“代表文档”同样失败。
 
 ## 样例（示意）
 

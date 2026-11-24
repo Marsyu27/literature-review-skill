@@ -1,32 +1,33 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Nanopublication 结果质检脚本（纯标准库）。
+"""Nanopublication records-only 与 record↔JSON-LD 严格等性质检。
 
 用法：
-    # JSON-LD 导出前的记录质检（不要求已有 JSON-LD）
     python scripts/validate_nanopub.py --records-only /app/output/result.json
-
-    # 导出后的最终严格质检（至少一个完整 JSON-LD 文档）
+    python scripts/export_nanopub.py /app/output/result.json \
+        --out-dir /app/output/nanopubs --update-result
     python scripts/validate_nanopub.py /app/output/result.json [extra.jsonld ...]
 
-校验项：
-  1. 每条 assertion 的 predicate 在受控词表内（核心 14 + 扩展 8，见
-     references/relation-vocabulary.md；本脚本内置同一清单）；
-  2. 每条 nanopublication 记录含 assertion / evidence / provenance 三个字段；
-     evidence 为空时，仅 status=unverified 的记录可作为 warning 放行；
-  3. 最终严格质检要求至少一个 JSON-LD 文档，并逐文档检查 @context、
-     assertion/evidence/provenance/pubinfo 四类 named graph，以及
-     urn:nanopub:<case_id>:<n> 形态的顶层 @id。JSON-LD 来源为 result.json 的
-     "jsonld" 字段、"jsonld_files" 字段所列文件和命令行追加文件。
-
-退出码：全部通过为 0；任一校验失败为非 0，并把错误清单打印到 stderr。
+最终质检将每一个实际文档与 export_nanopub.build_document(result, rec) 的
+canonical 构造结果做 JSON 树严格全等比较。对象键顺序不影响等价；数组顺序、
+字段缺多、值变化均影响等价。实际文档必须采用 canonical 四 graph 列表外壳，
+不接受其他 JSON-LD 同义外壳。内嵌 jsonld/json_ld、jsonld_files 和 CLI 附件
+都是独立来源，合并计数，不能用附件替代或绕过记录映射。
 """
 
 import argparse
 import json
 import os
-import re
 import sys
+
+from export_nanopub import (
+    CONTEXT,
+    GRAPH_NAMES,
+    NANOPUB_URN_RE,
+    CanonicalizationError,
+    build_document,
+    load_json,
+)
 
 # 与 references/relation-vocabulary.md 一致的完整受控词表：
 # 核心 14 项（is_a / instance_of 视为同组两项）+ 扩展 8 项。
@@ -44,13 +45,7 @@ EXTENDED_PREDICATES = {
     "applies_to", "defined_as", "supported_by", "uncertain_because",
 }
 ALLOWED_PREDICATES = CORE_PREDICATES | EXTENDED_PREDICATES
-REQUIRED_GRAPHS = ("assertion", "evidence", "provenance", "pubinfo")
-NANOPUB_URN_RE = re.compile(r"^urn:nanopub:[^:\s]+:[1-9]\d*$")
-
-
-def load_json(path):
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+REQUIRED_GRAPHS = GRAPH_NAMES
 
 
 def normalize_predicate(pred):
@@ -72,16 +67,31 @@ def evidence_is_empty(evidence):
 
 
 def check_predicates_and_fields(result, errors, warnings):
+    """保留原有词表/字段/空证据检查，并增加稳定的一一对应主键。"""
     nps = result.get("nanopublications")
     if not isinstance(nps, list) or not nps:
         errors.append("result.json 缺少非空的 nanopublications 数组")
         return
+    seen_ids = {}
     for i, rec in enumerate(nps, 1):
         rid = rec.get("id", f"#{i}") if isinstance(rec, dict) else f"#{i}"
         if not isinstance(rec, dict):
             errors.append(f"{rid}: 记录不是对象")
             continue
-        for key in ("assertion", "evidence", "provenance"):
+        expected_id = f"np-{i:03d}"
+        if isinstance(rid, str) and rid in seen_ids:
+            errors.append(
+                f"{rid}: record.id 重复（第 {seen_ids[rid]} 条与第 {i} 条）"
+            )
+        if not isinstance(rid, str):
+            errors.append(f"第 {i} 条 record.id 必须是 np-001 形式的字符串，实际为 {rid!r}")
+        elif rid not in seen_ids:
+            seen_ids[rid] = i
+        if rid != expected_id:
+            errors.append(
+                f"第 {i} 条 record.id 应为 {expected_id!r}（从 np-001 连续编号），实际为 {rid!r}"
+            )
+        for key in ("assertion", "evidence", "provenance", "status", "basis"):
             if key not in rec:
                 errors.append(f"{rid}: 缺少字段 {key}")
         assertion = rec.get("assertion")
@@ -95,6 +105,12 @@ def check_predicates_and_fields(result, errors, warnings):
                 errors.append(
                     f"{rid}: predicate '{assertion.get('predicate')}' 不在受控词表内"
                 )
+        if "provenance" in rec and not isinstance(rec.get("provenance"), dict):
+            errors.append(f"{rid}: provenance 必须是对象")
+        if "evidence" in rec and rec.get("evidence") is not None and not isinstance(
+            rec.get("evidence"), (dict, str)
+        ):
+            errors.append(f"{rid}: evidence 必须是对象、字符串或 null")
         if "evidence" in rec and evidence_is_empty(rec.get("evidence")):
             if rec.get("status") == "unverified":
                 warnings.append(
@@ -108,22 +124,28 @@ def check_predicates_and_fields(result, errors, warnings):
 
 
 def collect_jsonld_docs(result, result_dir, extra_files, errors):
-    """收集 JSON-LD 文档：命令行文件 + result.json 内嵌/引用。"""
+    """合并所有来源；不把一个来源当作另一个来源的替代。"""
     docs = []
     for path in extra_files:
         try:
             docs.append((path, load_json(path)))
         except Exception as exc:  # noqa: BLE001
             errors.append(f"JSON-LD 文件 {path} 无法解析: {exc}")
-    embedded = result.get("jsonld") or result.get("json_ld")
-    if isinstance(embedded, str):
-        try:
-            docs.append(("result.json#jsonld", json.loads(embedded)))
-        except json.JSONDecodeError as exc:
-            errors.append(f"result.json 内嵌 jsonld 字符串无法解析: {exc}")
-    elif isinstance(embedded, (dict, list)):
-        docs.append(("result.json#jsonld", embedded))
-    refs = result.get("jsonld_files") or []
+    for field in ("jsonld", "json_ld"):
+        if field not in result or result[field] is None:
+            continue
+        embedded = result[field]
+        source = f"result.json#{field}"
+        if isinstance(embedded, str):
+            try:
+                docs.append((source, json.loads(embedded)))
+            except json.JSONDecodeError as exc:
+                errors.append(f"{source} 内嵌字符串无法解析: {exc}")
+        elif isinstance(embedded, (dict, list)):
+            docs.append((source, embedded))
+        else:
+            errors.append(f"{source} 必须是 JSON-LD 对象、数组或 JSON 字符串")
+    refs = result.get("jsonld_files", [])
     if not isinstance(refs, list):
         errors.append("result.json 的 jsonld_files 必须是文件路径数组")
         refs = []
@@ -140,7 +162,6 @@ def collect_jsonld_docs(result, result_dir, extra_files, errors):
 
 
 def local_name(value):
-    """把 np:assertion、...#assertion 等表示归一为 named graph 键名。"""
     if not isinstance(value, str):
         return ""
     value = value.strip()
@@ -154,60 +175,73 @@ def local_name(value):
 
 
 def check_named_graphs(name, doc, errors):
-    """兼容契约示例的 @graph 列表及等价的 @graph 对象/直接四键表示。"""
-    declared = set()
-    graph_ids = {}
-
-    for key in doc:
-        graph_name = local_name(key)
-        if graph_name in REQUIRED_GRAPHS:
-            declared.add(graph_name)
-
-    graph_container = doc.get("@graph")
-    graph_items = graph_container if isinstance(graph_container, list) else [graph_container]
-    if isinstance(graph_container, dict) and "@id" not in graph_container:
-        # 支持 {"@graph": {"assertion": {...}, ...}} 的按键分组形式。
-        graph_items = []
-        for key, value in graph_container.items():
-            graph_name = local_name(key)
-            if graph_name in REQUIRED_GRAPHS:
-                declared.add(graph_name)
-                if isinstance(value, dict) and isinstance(value.get("@id"), str):
-                    graph_ids[graph_name] = value["@id"]
-
-    for item in graph_items:
-        if not isinstance(item, dict):
-            continue
-        for key in item:
-            graph_name = local_name(key)
-            if graph_name in REQUIRED_GRAPHS:
-                declared.add(graph_name)
-        graph_name = local_name(item.get("@id"))
-        if graph_name in REQUIRED_GRAPHS:
-            declared.add(graph_name)
-            graph_ids[graph_name] = item["@id"]
-
-    missing = [key for key in REQUIRED_GRAPHS if key not in declared]
-    if missing:
-        errors.append(
-            f"JSON-LD 输出 {name} 缺少 named graph: {', '.join(missing)}"
-            "（要求 assertion/evidence/provenance/pubinfo 四键）"
-        )
-
+    """最终格式只接受 canonical @graph 四对象列表及规范 URN 后缀。"""
     doc_id = doc.get("@id")
     if not isinstance(doc_id, str) or not NANOPUB_URN_RE.fullmatch(doc_id):
         errors.append(
             f"JSON-LD 输出 {name} 的顶层 @id 不符合 urn:nanopub:<case_id>:<n>；"
             f"实际为 {doc_id!r}"
         )
+    graph = doc.get("@graph")
+    if not isinstance(graph, list):
+        errors.append(f"JSON-LD 输出 {name} 的 @graph 必须是 canonical 四对象列表")
         return
-    for graph_name, graph_id in graph_ids.items():
-        expected = f"{doc_id}#{graph_name}"
-        if graph_id != expected:
+    if len(graph) != len(REQUIRED_GRAPHS):
+        errors.append(
+            f"JSON-LD 输出 {name} 的 @graph 必须恰含四项，实际为 {len(graph)} 项"
+        )
+    for index, graph_name in enumerate(REQUIRED_GRAPHS):
+        if index >= len(graph):
+            continue
+        item = graph[index]
+        if not isinstance(item, dict):
+            errors.append(f"JSON-LD 输出 {name} 的第 {index + 1} 个 graph 不是对象")
+            continue
+        graph_id = item.get("@id")
+        if local_name(graph_id) != graph_name:
             errors.append(
-                f"JSON-LD 输出 {name} 的 {graph_name} graph @id 应为 {expected!r}，"
-                f"实际为 {graph_id!r}"
+                f"JSON-LD 输出 {name} 的第 {index + 1} 个 graph 应为 {graph_name}，"
+                f"实际 @id 为 {graph_id!r}"
             )
+        if isinstance(doc_id, str):
+            expected = f"{doc_id}#{graph_name}"
+            if graph_id != expected:
+                errors.append(
+                    f"JSON-LD 输出 {name} 的 {graph_name} graph @id 应为 {expected!r}，"
+                    f"实际为 {graph_id!r}"
+                )
+
+
+def canonical_differences(actual, expected, path="$", limit=12):
+    """给出机器可读 JSON 树差异；对象键序不当作差异，数组顺序当作差异。"""
+    differences = []
+
+    def visit(left, right, location):
+        if len(differences) >= limit:
+            return
+        if type(left) is not type(right):
+            differences.append(f"{location}: 类型/值不同，实际 {left!r}，期望 {right!r}")
+            return
+        if isinstance(right, dict):
+            for key in sorted(set(left) | set(right)):
+                if key not in left:
+                    differences.append(f"{location}.{key}: 缺失，期望 {right[key]!r}")
+                elif key not in right:
+                    differences.append(f"{location}.{key}: 多余，实际 {left[key]!r}")
+                else:
+                    visit(left[key], right[key], f"{location}.{key}")
+        elif isinstance(right, list):
+            if len(left) != len(right):
+                differences.append(
+                    f"{location}: 数组长度不同，实际 {len(left)}，期望 {len(right)}"
+                )
+            for index, (left_item, right_item) in enumerate(zip(left, right)):
+                visit(left_item, right_item, f"{location}[{index}]")
+        elif left != right:
+            differences.append(f"{location}: 实际 {left!r}，期望 {right!r}")
+
+    visit(actual, expected, path)
+    return differences
 
 
 def check_jsonld(result, result_dir, extra_files, errors):
@@ -218,28 +252,77 @@ def check_jsonld(result, result_dir, extra_files, errors):
             items.extend((name, d) for d in doc)
         else:
             items.append((name, doc))
+
+    records = result.get("nanopublications")
+    record_count = len(records) if isinstance(records, list) else 0
     if not items:
         errors.append(
             "最终严格质检未找到任何 JSON-LD 文档；不得跳过 @context/named graph 校验"
         )
         return
+    if len(items) != record_count:
+        errors.append(
+            f"JSON-LD 文档数必须等于 record 数：实际 {len(items)}，期望 {record_count}"
+        )
+
+    occurrences = {}
     for name, doc in items:
         if not isinstance(doc, dict):
             errors.append(f"JSON-LD 输出 {name} 的每个文档都必须是对象")
             continue
-        if "@context" not in doc:
-            errors.append(f"JSON-LD 输出 {name} 缺少 @context")
+        if doc.get("@context") != CONTEXT:
+            errors.append(f"JSON-LD 输出 {name} 的 @context 与 canonical 定义不完全相等")
         check_named_graphs(name, doc, errors)
+        doc_id = doc.get("@id")
+        if isinstance(doc_id, str):
+            occurrences.setdefault(doc_id, []).append(name)
+
+    for urn, sources in occurrences.items():
+        if len(sources) > 1:
+            errors.append(f"JSON-LD URN 重复: {urn!r} 出现于 {sources}")
+
+    expected_urns = set()
+    for rec in records if isinstance(records, list) else []:
+        if not isinstance(rec, dict):
+            continue
+        rid = rec.get("id", "<unknown>")
+        try:
+            expected = build_document(result, rec)
+        except CanonicalizationError as exc:
+            errors.append(f"{rid}: 无法构造 canonical JSON-LD: {exc}")
+            continue
+        urn = expected["@id"]
+        expected_urns.add(urn)
+        if urn not in occurrences:
+            errors.append(f"{rid}: 缺失一一对应的 JSON-LD 文档 {urn!r}")
+            continue
+        name = occurrences[urn][0]
+        index = next(
+            (i for i, (_, doc) in enumerate(items)
+             if isinstance(doc, dict) and doc.get("@id") == urn),
+            None,
+        )
+        actual = items[index][1]
+        if actual != expected:
+            differences = canonical_differences(actual, expected)
+            errors.append(
+                f"{rid}: record↔JSON-LD 非 canonical 全等（{name}）："
+                + "；".join(differences)
+            )
+
+    for urn, sources in occurrences.items():
+        if urn not in expected_urns:
+            errors.append(f"JSON-LD 含无对应 record 的额外 URN {urn!r}（来源 {sources}）")
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Nanopublication 记录与 JSON-LD 严格质检")
+    parser = argparse.ArgumentParser(description="Nanopublication 记录与 JSON-LD 严格等性质检")
     parser.add_argument(
         "--records-only", action="store_true",
-        help="仅做 JSON-LD 导出前的记录质检，不检查 JSON-LD",
+        help="仅做 JSON-LD 导出前的记录质检，不检查也绝不声称已检查 JSON-LD",
     )
     parser.add_argument("result", help="result.json 路径")
-    parser.add_argument("extra_jsonld", nargs="*", help="追加的 JSON-LD 文件")
+    parser.add_argument("extra_jsonld", nargs="*", help="追加的 JSON-LD 文件（同样合并计数）")
     args = parser.parse_args(argv)
 
     errors = []
@@ -268,9 +351,15 @@ def main(argv=None):
             print(f"  - {error}", file=sys.stderr)
         return 1
     if args.records_only:
-        print("记录质检通过：谓词全部在受控词表内；assertion/evidence/provenance 齐全；evidence 已按 status 校验。尚未执行 JSON-LD 最终严格质检。")
+        print(
+            "records-only 记录质检通过：谓词、字段、连续 id 与 evidence 状态规则已检查；"
+            "尚未执行 JSON-LD 导出或最终等价质检，不代表 Final 通过。"
+        )
     else:
-        print("最终严格质检通过：谓词全部在受控词表内；assertion/evidence/provenance 齐全；evidence 已按 status 校验；JSON-LD @context、四类 named graph 与 URN @id 形态校验完成。")
+        print(
+            "最终严格等价质检通过：record 与 canonical JSON-LD 数量、URN、SPO/condition、"
+            "evidence、status/basis、provenance、pubinfo 逐项全等；@context 与四 graph 合规。"
+        )
     return 0
 
 

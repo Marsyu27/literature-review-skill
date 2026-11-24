@@ -29,15 +29,29 @@
 }
 ```
 
-## JSON-LD 导出
+## Canonical JSON-LD 机械导出
 
-每条 nanopublication 对应一个 JSON-LD 文档。**必须含 `@context`、四类 named graph 和合规 URN 顶层 `@id`**；最终严格质检会实际检查这些项目，完全没有 JSON-LD 也直接失败。约定：
+**模型只编写 records，不独立编写或同步第二份 JSON-LD。** 完成 records-only 质检后，唯一允许的导出路径是：
 
-- `@context`：schema.org + 自定义 `np` 命名空间（`https://example.org/nanopub-skill/ns#`，承载词表谓词与 nanopub 结构键）。
-- `@id` 规则：`urn:nanopub:<case_id>:<n>`（n 从 1 起按断言序号递增），各 named graph 在其后分别缀 `#assertion` / `#evidence` / `#provenance` / `#pubinfo`。
-- 用 `@graph` 给出四个 named graph 键：`assertion`（主体-谓词-客体，谓词取受控词表，写作 `np:<predicate>`）、`evidence`（最小充分证据 + 位置 + 直接/间接）、`provenance`（证据来源 + 抽取方法"由该 Skill 从论文 X 抽取"）、`pubinfo`（论文元数据 + 标识符 + 许可）。
+```bash
+python scripts/validate_nanopub.py --records-only /app/output/result.json
+python scripts/export_nanopub.py /app/output/result.json \
+  --out-dir /app/output/nanopubs --update-result
+python scripts/validate_nanopub.py /app/output/result.json [extra.jsonld ...]
+```
 
-最小完整示例：
+每条 `result.nanopublications` 对应 `np-NNN.jsonld`。`id` 必须唯一、按数组顺序从 `np-001` 连续编号，并映射到 `urn:nanopub:<case_id>:1` 等；`case_id` 不得含冒号或空白。`--update-result` 只把 `jsonld_files` 改为本次规范文件的相对路径清单，并删除陈旧内嵌 `jsonld` / `json_ld` 字段，不删除其他 result 字段或目录中的其他文件。`partial` / `unverified` 同样按真实 records 导出，不填写推测内容。
+
+### 唯一 canonical 映射
+
+- `@context` 固定为下方示例中的 schema.org + `np` 六项定义；顶层只有 `@context`、`@id`、`@graph`。
+- `@graph` **固定为四对象列表**，顺序恰为 `assertion`、`evidence`、`provenance`、`pubinfo`；各项 `@id` 分别带规范 URN 后缀 `#assertion` / `#evidence` / `#provenance` / `#pubinfo`，四类型固定为 `np:Assertion` / `np:Evidence` / `np:Provenance` / `schema:ScholarlyArticle`。
+- assertion graph：`subject` / `predicate` / `object` / `condition` 分别映射 `np:subject` / `np:predicate`（确保 `np:` 前缀）/ `np:object` / `np:condition`；空 condition 省略。`record.status` / `basis` 同图保留为 `np:status` / `np:basis`。
+- evidence graph：`evidence_text` / `evidence_location` / `evidence_type` 原值映射同名 `np:` 键。即使 unverified 空证据也保留三键，空值导出为 `""`，不删 graph 或字段。
+- provenance graph：保留 `record.provenance` 的 `assertion` / `evidence` / `paper` / `author` / `year` / `version`，其余普通扩展字段也稳定映射为同名 `np:` 键；输入中的 `wasDerivedFrom` 与 `extractionMethod` 不作为自由文本来源。`np:wasDerivedFrom` 强制派生为当前 `<urn>#evidence`，`np:extractionMethod` 固定生成为 `由 nanopublication-extraction Skill 从论文 <result.pubinfo.paper_title> 抽取`。
+- pubinfo graph：**不再由 Agent 另写**。由 `result.pubinfo` 确定性映射 `paper_title` → `schema:name`、`authors` → `schema:author`、`year` → `schema:datePublished`、`version` → `schema:version`、`identifier` → `schema:identifier`；缺省标准为对应空字符串或作者空数组，`license` 存在时映射 `schema:license`。
+
+最小完整示例（顶层 `@id` 实际为 `urn:nanopub:demo:1`）：
 
 ```json
 {
@@ -49,43 +63,54 @@
     "provenance": "np:provenance",
     "pubinfo": "np:pubinfo"
   },
-  "@id": "urn:nanopub:<case_id>:1",
+  "@id": "urn:nanopub:demo:1",
   "@graph": [
     {
-      "@id": "urn:nanopub:<case_id>:1#assertion",
+      "@id": "urn:nanopub:demo:1#assertion",
       "@type": "np:Assertion",
       "np:subject": "Treatment A",
       "np:predicate": "np:reduces",
       "np:object": "tumor size",
+      "np:status": "ok",
+      "np:basis": "原文直接给出方向、数值与限定条件。",
       "np:condition": "by 30%, p<0.05, in mice"
     },
     {
-      "@id": "urn:nanopub:<case_id>:1#evidence",
+      "@id": "urn:nanopub:demo:1#evidence",
       "@type": "np:Evidence",
-      "np:evidence_text": "<最小充分原文片段>",
+      "np:evidence_text": "Treatment A reduced tumor size by 30% (p<0.05) in mice",
       "np:evidence_location": "§3 ¶2",
       "np:evidence_type": "direct"
     },
     {
-      "@id": "urn:nanopub:<case_id>:1#provenance",
+      "@id": "urn:nanopub:demo:1#provenance",
       "@type": "np:Provenance",
-      "np:wasDerivedFrom": "urn:nanopub:<case_id>:1#evidence",
-      "np:extractionMethod": "由 nanopublication-extraction Skill 从论文 <paper_title> 抽取"
+      "np:assertion": "np-001",
+      "np:evidence": "§3 ¶2",
+      "np:paper": "A Demonstration Study",
+      "np:author": "A. Author",
+      "np:year": "2025",
+      "np:version": "arXiv v2",
+      "np:wasDerivedFrom": "urn:nanopub:demo:1#evidence",
+      "np:extractionMethod": "由 nanopublication-extraction Skill 从论文 A Demonstration Study 抽取"
     },
     {
-      "@id": "urn:nanopub:<case_id>:1#pubinfo",
+      "@id": "urn:nanopub:demo:1#pubinfo",
       "@type": "schema:ScholarlyArticle",
-      "schema:name": "<paper_title>",
-      "schema:author": ["<authors>"],
-      "schema:datePublished": "<year>",
-      "schema:identifier": "<DOI/标识符>",
-      "schema:license": "<许可>"
+      "schema:name": "A Demonstration Study",
+      "schema:author": ["A. Author", "B. Author"],
+      "schema:datePublished": "2025",
+      "schema:version": "arXiv v2",
+      "schema:identifier": "arXiv:2501.00000",
+      "schema:license": "CC-BY-4.0"
     }
   ]
 }
 ```
 
-下游程序可直接解析，无需人工清洗。
+### 严格全等而不是外壳检查
+
+最终质检复用 exporter 的 `build_document(result, rec)`，对每个实际文档与 records 现算出的 canonical 文档做 **JSON 树严格全等比较**：对象键顺序不影响等价；数组顺序、额外/缺失字段、任何值变化都影响等价。因此 alternate JSON-LD 外壳即使语义相似也不被接受。所有内嵌 `jsonld` / `json_ld`、`jsonld_files` 和命令行附件合并计数；文档数必须等于 record 数，不允许缺失、额外或重复 URN，也不能用附件绕过某一 record 的逐项映射。下游程序可直接解析 canonical 文件，无需人工清洗。
 
 ## 字段说明
 
@@ -111,5 +136,5 @@
 
 ## 两步机检
 
-1. 导出前记录质检：`python scripts/validate_nanopub.py --records-only /app/output/result.json`，不宣称已检查 JSON-LD。
-2. JSON-LD 导出后最终严格质检：`python scripts/validate_nanopub.py /app/output/result.json [extra.jsonld ...]`，无 JSON-LD、缺 `@context`/四类 named graph 或 URN `@id` 形态错误均退出非 0。
+1. 导出前 records-only 质检：`python scripts/validate_nanopub.py --records-only /app/output/result.json`，不宣称已导出或检查 JSON-LD，更不宣称 Final 通过。
+2. `export_nanopub.py ... --out-dir ... --update-result` 机械导出后，运行 `python scripts/validate_nanopub.py /app/output/result.json [extra.jsonld ...]`。最终校验除 `@context`、四 graph 与 URN 形态外，还严格比较数量、连续 id、URN 一一对应以及 SPO/condition、evidence、status/basis、provenance、pubinfo；任何不一致均退出非 0。
