@@ -10,7 +10,9 @@
 ## 文件结构
 
 ```
-SKILL.md                               # 主 Skill（入口，六步流程）
+SKILL.md                               # 主 Skill（入口，七步流程）
+scripts/build_anchor_index.py          # 生成 §/¶ 稳定锚点索引（纯标准库）
+scripts/validate_anchors.py            # 交付前锚点/quote 核验（纯标准库，非全绿退出码 1）
 references/paper-card-fields.md        # 论文卡片字段字典
 references/section-alignment.md        # 章节对齐与承接关系
 references/knowledge-extraction.md     # 知识点提取、归一化与去重
@@ -22,7 +24,7 @@ src/reproduce.py                       # 自检入口
 
 ## 调用方式
 
-加载 Skill 后，Agent 按 SKILL.md 六步流程：读输入→结构识别→论文卡片→章节总结→知识点提取→锚点回链→输出 result.json。
+加载 Skill 后，Agent 按 SKILL.md 七步流程：读输入→结构识别并跑 `build_anchor_index.py` 生成锚点索引→论文卡片→章节总结→知识点提取→锚点回链（锚点只能取自索引 ID）→输出 result.json→跑 `validate_anchors.py` 全绿后交付。
 
 ## 输出契约
 
@@ -34,7 +36,7 @@ src/reproduce.py                       # 自检入口
 
 ## 异常处理与限制
 
-- 扫描件/双栏错序 → 修正阅读顺序，不可靠则标 uncertain；图表/公式缺失 → 保留编号，标内容不可读；原文矛盾 → 保留两处原文，标 conflict；前提缺失 → not_reported。
+- 扫描件/双栏错序 → 无版面信息时按输入文本顺序组织，疑似错序/不可判读块标 uncertain 并说明；图表/公式缺失 → 保留编号，标内容不可读；原文矛盾 → 保留两处原文，标 conflict；前提缺失 → not_reported。
 - 本 Skill 只做忠实抽取整理，不评价研究质量、不推断原文没有的内容。
 
 ## 最小调用示例（示意，非正式案例）

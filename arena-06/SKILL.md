@@ -27,11 +27,15 @@ description: >-
 2. 读 `/input/task.md`：确认本次要求（整篇笔记 / 论文卡片 / 章节摘要 / 知识点 / 指定章节）。
 3. 记录 `case_id` 与 output_contract 字段。`result.json` 必须含 `case_id` 与全部 output_contract 字段。
 
-### 第 1 步：结构识别（对得上）
-1. 识别论文自身结构：标题、作者、摘要、章节（编号与标题）、图表、公式、参考文献。
-2. **骨架跟着原文走**，不套用通用摘要模板。若原文章节编号为 `2.3`、`III.A`，笔记保留原编号与层级。
-3. 识别"论证顺序"：每个章节的目的（做什么）与方法（怎么做）→ 结果 → 结论，并保留章节间承接关系。
-4. 页眉页脚、脚注单独标记，不混入正文。
+### 第 1 步：结构识别 + 生成锚点索引（对得上）
+1. **先跑 `scripts/build_anchor_index.py` 生成锚点索引**：
+   `python3 scripts/build_anchor_index.py --input <论文文本/md> --out anchor_index.json`。
+   索引按标题行切分章节并赋稳定 ID（`§1..§n`），章节内按空行切段落赋 `¶1..¶m`；
+   后续所有锚点**必须取自该索引中的 ID**，不允许自编号。
+2. 识别论文自身结构：标题、作者、摘要、章节（编号与标题）、图表、公式、参考文献。
+3. **骨架跟着原文走**，不套用通用摘要模板。若原文章节编号为 `2.3`、`III.A`，笔记保留原编号与层级（索引的 `§n` 是定位 ID，与原编号并列记录，不互相替代）。
+4. 识别"论证顺序"：每个章节的目的（做什么）与方法（怎么做）→ 结果 → 结论，并保留章节间承接关系。
+5. 页眉页脚、脚注单独标记，不混入正文。
 
 ### 第 2 步：论文卡片（留得住）
 按统一字段登记（见 references/paper-card-fields.md），至少覆盖：
@@ -58,8 +62,9 @@ description: >-
 
 ### 第 5 步：锚点回链（找得回）
 每条笔记、每个字段、每个知识点都要**锚点**（见 references/source-anchoring.md）：
-- 格式：`page=N` + `§章节` + `¶段落` + `Fig./Table/Eq. 编号`（按可用粒度）。
-- 锚点必须指向**真正对应的位置**，不是笼统的"见正文"。
+- 锚点 = 第 1 步索引中的稳定 ID：`§x` 或 `§x ¶y`；可附带 `Fig./Table/Eq. 编号` 作补充定位。
+- **只允许使用索引里存在的 §/¶ ID**；`page=N` 仅在输入材料自带真实页码时附加。
+- 锚点必须指向**真正对应的位置**，不是笼统的"见正文"；带 `quote` 的条目，quote 必须逐字摘自被引段落。
 - 无法确定位置 → 标 `uncertain`，不伪造锚点。
 
 ### 第 6 步：输出 result.json
@@ -70,11 +75,28 @@ description: >-
 
 同时输出 Markdown 笔记（可读、可检索、可比较）。
 
+### 第 7 步：交付前核验（必须全绿）
+写盘前必须运行锚点校验，全部通过才可交付：
+```
+python3 scripts/validate_anchors.py --result /app/output/result.json \
+    --index anchor_index.json --report /app/output/anchor_report.json
+```
+- 退出码 0：锚点全部存在于索引、quote 与原文一致，可交付。
+- 退出码 1：按报告逐条修正（换用索引中真实存在的 ID、订正 quote），或把对应条目标 `uncertain` 后重跑；**未通过核验的锚点不得留在交付物中**。
+
+## 检查点与降级
+
+- 检查点 1（第 1 步后）：`anchor_index.json` 已生成且章节数与原文观感一致；为 0 节 → 输入无标题结构，改用"全文一节"降级并说明。
+- 检查点 2（第 5 步后）：每条 `source_anchor` 都能人工在索引中查到；查不到 → 立即换 ID 或标 `uncertain`。
+- 检查点 3（第 7 步）：`validate_anchors.py` 退出码 0；非 0 → 回到第 5 步修正，不得带病交付。
+- 降级：索引生成失败（输入为空/无法读取）→ `status=unable` 并写明原因；个别段落无法定位 → 条目级 `uncertain`，整体可 `partial`。
+- 预算不足时优先保证：锚点索引 + 核验通过 > 知识点数量。
+
 ## 异常与边界
 
 | 情况 | 处置 |
 |---|---|
-| 扫描件/乱码/双栏错序 | 先按解析 Skill 的思路修正阅读顺序；仍不可靠则标 `uncertain` |
+| 扫描件/乱码/双栏错序 | 自包含规则：无版面信息时一律按输入文本顺序组织章节与段落；疑似错序或不可判读的块标 `uncertain` 并在 `uncertainties` 说明原因，不臆测重排 |
 | 图表/公式缺失或为图片 | 保留编号与位置，标"内容不可读"，不臆造 |
 | 原文自相矛盾 | 保留两处原文并标 `conflict`，不擅自取舍 |
 | 前提条件缺失 | 在 `limitations`/`uncertainties` 注明"原文未报告" |
@@ -87,6 +109,8 @@ description: >-
 - 本 Skill 只做忠实抽取整理，不评价研究质量。
 
 详见随附资源：
+- `scripts/build_anchor_index.py` —— 生成 §/¶ 稳定锚点索引（纯标准库）
+- `scripts/validate_anchors.py` —— 交付前锚点/quote 核验（纯标准库，非全绿退出码 1）
 - `references/paper-card-fields.md` —— 论文卡片字段字典
 - `references/section-alignment.md` —— 章节对齐与承接关系规则
 - `references/knowledge-extraction.md` —— 知识点提取、归一化与去重

@@ -7,8 +7,8 @@
 
 ## 流程
 
-1. **渲染**：`pdftoppm -png -r 300` 逐页渲染为图像。
-2. **预处理**（用 scientific-python，如 Pillow/OpenCV 可用则用）：
+1. **渲染**：`pdftoppm -png -r 300` 逐页渲染为图像（poppler-utils；与 parse_pdf.py 同源）。
+2. **预处理**（只用环境中实际存在的工具，先 `command -v` 探测；都没有则跳过预处理直接 OCR）：
    - 灰度化、二值化（Otsu）、去噪、去倾斜（deskew）。
    - 低分辨率页放大到 ≥300 DPI 等效。
 3. **OCR**：`tesseract <page>.png out -l eng`（或含中文 `-l chi_sim+eng`，按文档语言）。

@@ -12,12 +12,13 @@
 
 ```
 SKILL.md                              # 主 Skill（入口，YAML frontmatter + 十步流程）
-references/layout-reading-order.md    # 多栏阅读顺序与页眉页脚判定
+scripts/parse_pdf.py                  # 版面机械解析：真实坐标/栏判定/阅读顺序/页眉页脚/表格候选（标准库+pdftotext）
+scripts/build_slides.py               # 可编辑 PPTX 生成 + 渲染预览（自包含）
+references/layout-reading-order.md    # 多栏阅读顺序与页眉页脚判定（LLM 语义修正依据）
 references/table-structure.md         # 表格结构重建规则
 references/formula-preservation.md    # 公式/特殊字符保真
 references/ocr-fallback.md            # 扫描版 PDF 的 OCR 流程
-references/output-schema.md           # result.json 契约与页级证据映射
-scripts/build_slides.py               # 可编辑 PPTX 生成 + 渲染预览（自包含）
+references/output-schema.md           # result.json 契约（含契约优先级与 blocks 分块落盘）
 examples/parse-examples.md            # 标注为示例的解析样例
 src/reproduce.py                      # 自检入口（校验+自测，非评测用例）
 ```
@@ -27,18 +28,19 @@ src/reproduce.py                      # 自检入口（校验+自测，非评测
 加载 Skill 后，Agent 按 SKILL.md 的十步流程执行：
 
 1. 读 `/input/case.json`（取 `case_id`、`output_contract` 字段、PDF 路径）与 `/input/task.md`。
-2. 判 PDF 类型（文字层 / 扫描版）。
-3. 提取文字 → 版面分析（多栏顺序）→ 结构识别 → 表格/公式 → 页级证据映射 → 输出 result.json（+ 可选 PPTX）。
+2. **机械解析先行**：`python3 scripts/parse_pdf.py --pdf <PDF> --out work/blocks.json`，拿到真实坐标、单/双栏判定、初排阅读顺序、页眉页脚剔除与表格候选；退出码 2 → text-only 降级（坐标 null、order 按文本流、result 标 `mode`）。
+3. LLM 只在 blocks.json 上做语义标注/修正（标题层级、表格语义）→ 结构识别 → 公式 → 页级证据映射 → 输出 result.json（+ 可选 PPTX）。
 
 ## 输出契约
 
 `/app/output/result.json` 必含：`case_id`、`status`、`status_reason`、output_contract 要求的全部字段、结构化解析结果、页级证据映射、`uncertainties`。详见 `references/output-schema.md`。
 
-## 依赖
+## 依赖（三档诚实声明）
 
-- 首选工具：`pdftotext`（pdf-text-tool）、`pdftoppm`（pdf-render-tool）、`tesseract`（ocr-tool）、`python3`（scientific-python）、`soffice`（office-renderer）。
-- `scripts/build_slides.py` 优先用 `python-pptx`；未安装时自动回退到仅标准库的最小 OOXML 生成器，无需额外依赖。
-- `requirements.txt` 为空：核心解析依赖环境预装工具，脚本无强制第三方包。
+- **Python 无第三方依赖**：`scripts/parse_pdf.py` 仅用标准库（subprocess 调系统工具）；`scripts/build_slides.py` 优先用 `python-pptx`（可选），未安装时自动回退到仅标准库的最小 OOXML 生成器。
+- **poppler-utils（pdftotext）**：版面模式必需；缺失时 parse_pdf.py 退出码 2，降级 text-only（坐标 null、order 按文本流、result 标 `mode:"text-only"`）。
+- **tesseract**（可选）：扫描件 OCR；缺失时扫描页标 `image_only`。
+- **soffice**（可选）：PPTX 渲染 PDF/PNG 预览；缺失时跳过预览并在 result 注明。
 
 ## 异常处理与限制
 

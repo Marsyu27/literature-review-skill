@@ -1,5 +1,11 @@
 # result.json 字段契约（Output Schema）
 
+## 契约优先级
+
+1. **`/input/case.json` 的 `output_contract` 字段 > 本文件定义的 Skill 默认字段**。
+2. `output_contract` 声明的每个字段**缺失必补**（字段名与类型原样回填，不得改名或省略）。
+3. 命名或类型与本文件默认字段冲突时，**以 `output_contract` 为准**，本文件字段仅作默认补充。
+
 ## 硬性要求
 
 1. `case_id` 原样回填；`status` + `status_reason` 必填。
@@ -53,3 +59,4 @@
 ## 诚实原则
 
 数字、单位、公式、引用编号逐字保留；译不出就标不确定，不补造。每条译文说明"从哪来"（段号 + 依据）。
+交付前 `scripts/check_terminology.py` 与 `scripts/check_conservation.py` 必须全绿（退出码 0），两条实际命令记入 `tool_commands`，报告文件路径写入 `uncertainties` 或工作目录说明；脚本残余缺口不得隐瞒。

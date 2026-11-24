@@ -22,7 +22,20 @@
 1. **一术语一译名**：标题、摘要、正文、图注、结论中同一术语必须用同一译名；发现漂移即回改。
 2. **缩写首次展开**：原文首现为全称+缩写的，译文首次也展开，后续只用缩写。
 3. **同义混用合并**：如 `efficiency` 与 `performance` 指同一量时，登记为一行，`translation` 取多数派译名，`note` 说明"原文混用，已按多数统一"。
-4. **术语表是冻结的**：后续翻译只能查表，不能新造译名；确需新增须回写术语表并重扫全篇。
+4. **术语表是冻结的**：后续翻译只能查表，不能新造译名；确需新增须回写术语表，并用 `scripts/check_terminology.py` 对全部 segments 机械重扫（回填/漂移/frozen 三项），**不依赖人工重读全篇**。
+
+## 机读格式（terminology.json，供 check_terminology.py 强制核验）
+
+术语表维护为上表的人类可读形式；交付前必须导出机读 `terminology.json`，每行一个术语：
+
+| 字段 | 含义 | 必填 |
+|---|---|---|
+| `term` | 原文术语（脚本按大小写不敏感、ASCII 词边界匹配 source） | 是 |
+| `locked` | 唯一锁定译名；source 含 `term` 的段落，target 必须含 `locked` | 是 |
+| `alternates` | 旧译/别译清单；target 出现其中任何一个即报漂移 warning | 否（缺省 `[]`） |
+| `frozen` | `true` 时 `locked` 必须在 target **逐字**（区分大小写）出现，用于缩写、符号、专名 | 否（缺省 `false`） |
+
+导出规则：`translation` → `locked`；`note` 中登记过的旧译/别译 → `alternates`；缩写与符号类条目 `frozen=true`。脚本报告有 error 即不得交付，修复后重跑至全绿。
 
 ## 冲突处理
 

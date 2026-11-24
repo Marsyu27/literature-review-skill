@@ -1,5 +1,7 @@
 # 多栏阅读顺序与页眉页脚判定（Layout & Reading Order）
 
+> 机械实现：`scripts/parse_pdf.py` 已按本文件规则产出初排（词 xMin 直方图双峰 + 栏间谷底判双栏、左栏→右栏阅读顺序、≥50% 页重复行剔除页眉页脚）。本文件是 LLM 在 `blocks.json` 上做**语义修正**时的判定依据；修正须写依据进 `uncertainties`。
+
 ## 判栏
 
 1. 用 `pdftoppm -png -r 150` 渲染页面，或 `pdftotext -bbox-layout` 拿字符坐标。

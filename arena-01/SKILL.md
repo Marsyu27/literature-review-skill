@@ -55,16 +55,31 @@ description: >-
 - **公式与编号**：公式原样保留，`(3)`/`Eq.(2)` 编号对应不变。
 - **文献引用**：`[12]`/`(Smith, 2020)` 指向不变。
 
-### 第 5 步：译文核验（可核验）
-逐段回核（读译文，对照原文）：
-1. 术语是否与第 1 步术语表一致；
-2. 数字/单位/公式/引用是否逐字保留；
-3. 否定/限定/因果是否未变；
-4. 是否漏译、多译、错位。
+### 第 5 步：译文核验（可核验，机械检查先行）
+先把第 1 步术语表落盘为 `terminology.json`、第 3 步双语段落落盘为 `segments.json`（机读格式见 references/terminology-lock.md 与 references/output-schema.md），然后**先跑两个核验脚本**，再人工回核脚本覆盖不了的项：
+
+1. `python3 scripts/check_terminology.py --terms terminology.json --segments segments.json --report work/terminology-report.json`
+   —— 机械检查术语**回填**（source 含术语而 target 缺 locked 译名 → error）、旧译**漂移**（warning）、**frozen** 逐字约束；有 error 退出码 1。
+2. `python3 scripts/check_conservation.py --segments segments.json --report work/conservation-report.json`
+   —— 逐段核对数字（含小数/百分数/千分位）、引用标记（`[n]` 与 `(Author, year)`）、带单位量（如 `300 K`、`2.5 m/s`）是否守恒；missing 非空退出码 1。
+
+**两个脚本全绿（退出码均为 0）才允许交付；红则修复译文后重跑，直到全绿；确属原文残缺的残余缺口如实写入 `uncertainties` 并说明脚本报告路径。**
+
+脚本覆盖不了的项仍需人工逐段回核（读译文，对照原文）：
+1. 否定/限定/因果是否未变（references/hedge-strength.md）；
+2. 指代对象是否一致；
+3. 是否漏译、多译、错位。
 生成**需人工确认清单**（译不准、歧义、术语冲突、原文残缺），写入 `uncertainties`。
 
 ### 第 6 步：产出结果
 按 references/output-schema.md 写 `/app/output/result.json`，并输出双语对照文档（Markdown：段号 + 原文 + 译文 + 依据）与术语表。
+
+## 检查点与降级
+
+1. 第 0 步读完输入即写 `/app/output/result.json` 骨架（`case_id` + output_contract 字段占位 + `status:"in_progress"`），任何时刻中断都有可交付物。
+2. 按章节分块增量更新：每译完一章即回写 result.json 与 segments.json，不等到全文译完。
+3. 预算过半按 **译文主体 → 术语表 → 守恒核验 → uncertainties** 降级：先保译文主体完整，再保术语表，核验缺口如实写进 `uncertainties`。
+4. 每次降级在 `status_reason` 写明降了哪一级、缺口在哪一章。
 
 ## 异常与边界
 
@@ -83,6 +98,8 @@ description: >-
 - 本 Skill 只做忠实翻译，不做研究结论判断；遇到"这句是否科学正确"交给用户。
 
 详见随附资源：
+- `scripts/check_terminology.py` —— 术语回填/漂移/frozen 机械核验（纯标准库）
+- `scripts/check_conservation.py` —— 数字/引用/带单位量守恒逐段核验（纯标准库）
 - `references/terminology-lock.md` —— 术语表抽取、锁定与冲突处理
 - `references/hedge-strength.md` —— 限定词/程度词强度分级与守恒（关系准核心）
 - `references/bilingual-alignment.md` —— 段落级双语对照与段号约定

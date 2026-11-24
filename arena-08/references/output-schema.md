@@ -1,5 +1,17 @@
 # result.json 完整字段与页级证据映射契约（Output Schema）
 
+## 契约优先级
+
+1. **`/input/case.json` 的 `output_contract` 字段 > 本文件定义的 Skill 默认字段**。
+2. `output_contract` 声明的每个字段**缺失必补**（字段名与类型原样回填，不得改名或省略）。
+3. 命名或类型与本文件默认字段冲突时，**以 `output_contract` 为准**，本文件字段仅作默认补充。
+
+## 长文档 blocks 分块落盘
+
+- `blocks` 超过约 500 块或单次写盘过大时，按页序分块落盘为 `/app/output/blocks-part-1.json` … `blocks-part-N.json`，每文件形如 `{"part": 1, "of": N, "blocks": [...]}`。
+- 分块边界**按页切分，不跨页**；每块仍保留 `id/page/column/order/bbox/text/kind` 全字段。
+- 此时 result.json 的 `blocks` 字段替换为 `blocks_files`（分块文件路径清单）+ 少量抽样块；`scripts/parse_pdf.py` 的原始输出 `blocks.json` 完整保留在工作目录作为审计底稿。
+
 ## 硬性要求
 
 1. `case_id` 原样回填，`status` + `status_reason` 必填。
@@ -27,11 +39,15 @@
     ]
   },
 
+  "mode": "layout | text-only",
+
   "blocks": [
     {
       "id": "b3",
-      "type": "heading | paragraph | table | formula | figure_caption | footnote | header | footer | marginalia",
+      "kind": "body | header | footer | table_candidate",
+      "type": "heading | paragraph | table | formula | figure_caption | footnote | marginalia",
       "page": 1,
+      "column": 0,
       "bbox": [x0, y0, x1, y1],
       "text": "…",
       "order": 3,
@@ -73,8 +89,9 @@
 | 字段 | 必填 | 说明 |
 |---|---|---|
 | `case_id` / `status` / `status_reason` | 是 | 运行状态三件套 |
+| `mode` | 是 | `layout`（parse_pdf.py 版面模式，有真实坐标）或 `text-only`（pdftotext 缺失的降级：bbox 一律 null、order 按文本流） |
 | `document` | 是 | 整篇结构：标题、作者、摘要、章节树、参考文献 |
-| `blocks` | 是 | 全量结构单元流，含 `page`/`bbox`/`order`/`confidence` —— 这是"核得回"的载体 |
+| `blocks` | 是 | 全量结构单元流，含 `page`/`bbox`/`order`/`confidence` —— 这是"核得回"的载体。`kind` 由 parse_pdf.py 机械产出（body/header/footer/table_candidate），`type` 由 LLM 在 blocks.json 上语义标注补充 |
 | `tables` / `formulas` / `figures` | 按需 | 从 blocks 中抽取的结构化子集 |
 | `headers_footers` | 是 | 页眉页脚/水印，单独存放不混入正文 |
 | `uncertainties` | 是 | 无法判断/需人工确认项；无则空数组 |

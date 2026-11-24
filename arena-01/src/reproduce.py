@@ -12,6 +12,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 REQUIRED = [
     "SKILL.md",
+    "scripts/check_terminology.py",
+    "scripts/check_conservation.py",
     "references/terminology-lock.md",
     "references/hedge-strength.md",
     "references/bilingual-alignment.md",

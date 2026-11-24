@@ -23,6 +23,7 @@ REQUIRED = [
     "references/formula-preservation.md",
     "references/ocr-fallback.md",
     "references/output-schema.md",
+    "scripts/parse_pdf.py",
     "scripts/build_slides.py",
     "examples/parse-examples.md",
 ]

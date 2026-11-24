@@ -11,11 +11,13 @@
 
 ```
 SKILL.md                              # 主 Skill（入口，六步流程）
-references/terminology-lock.md        # 术语抽取、锁定与冲突处理
+scripts/check_terminology.py          # 术语回填/漂移/frozen 机械核验（纯标准库，有 error 退出码 1）
+scripts/check_conservation.py         # 数字/引用/带单位量守恒逐段核验（纯标准库，missing 退出码 1）
+references/terminology-lock.md        # 术语抽取、锁定与冲突处理（含 terminology.json 机读格式）
 references/hedge-strength.md          # 限定词强度分级与守恒（关系准核心）
 references/bilingual-alignment.md     # 段落级双语对照与段号约定
 references/translation-verification.md# 译文核验清单
-references/output-schema.md           # result.json 契约
+references/output-schema.md           # result.json 契约（含契约优先级）
 examples/translation-examples.md      # 标注为示例的对照
 src/reproduce.py                      # 自检入口
 ```
@@ -24,13 +26,15 @@ src/reproduce.py                      # 自检入口
 
 加载 Skill 后，Agent 按 SKILL.md 六步流程：读输入→术语抽取冻结→长文分段→逐段双语对照→关系守恒检查→译文核验→输出 result.json。
 
+译文核验为"机械检查先行"：先跑 `scripts/check_terminology.py` 与 `scripts/check_conservation.py`，两脚本全绿（退出码 0）才允许交付；红则修复后重跑。
+
 ## 输出契约
 
 `/app/output/result.json` 必含：`case_id`、`status`、`status_reason`、output_contract 字段、`terminology`、`segments`（段号+原文+译文+依据+状态）、`uncertainties`。
 
 ## 依赖
 
-无强制第三方包；翻译由加载 Skill 的 LLM 执行，`references/` 提供规则。
+无强制第三方包：`scripts/` 两个核验脚本仅用 Python 标准库；翻译由加载 Skill 的 LLM 执行，`references/` 提供规则。
 
 ## 异常处理与限制
 
