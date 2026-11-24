@@ -49,10 +49,17 @@ description: >-
 谓词（predicate）从 references/relation-vocabulary.md 的**受控词表**取值，不自由发挥；主体/客体方向必须准确（谁作用于谁）。
 
 ### 第 5 步：质量检查（拆得细 + 对得上）
-按 references/quality-check.md 逐条检查：断言过宽、证据不足、关系类型错误、主体混淆、来源缺失、限定词丢失。每条给出**可复现的判定依据**。检查不通过 → 回第 1 步或标 `uncertain`。
+按 references/quality-check.md 逐条检查：断言过宽、证据不足、关系类型错误、主体混淆、来源缺失、限定词丢失。每条给出**可复现的判定依据**。检查不通过 → 回第 1 步或标 `uncertain`。导出前运行 `python scripts/validate_nanopub.py /app/output/result.json` 做机检（谓词词表、三字段齐全、JSON-LD @context），退出码非 0 时按错误清单修正后复检。
 
 ### 第 6 步：结构化导出（读得懂）
-写 `/app/output/result.json`（见 references/output-schema.md），并导出 JSON-LD（含 `assertion` / `provenance` / `pubinfo` 三部分），字段与序列化形态符合约定，下游程序可直接解析。
+写 `/app/output/result.json`（见 references/output-schema.md），并导出 JSON-LD（含 `@context` 与 `assertion` / `evidence` / `provenance` / `pubinfo` 四个 named graph），字段与序列化形态符合约定，下游程序可直接解析。
+
+## 检查点与降级
+
+- 第 0 步读完输入即把 `result.json` 骨架（`case_id` + `status: "in_progress"` + output_contract 全部字段的空值）写入 `/app/output/result.json`，之后每阶段就地更新。
+- 断言逐批**增量落盘**：每完成一批（如一个章节/段落组）即把该批 nanopublications 追加写入结果或增量文件（如 `/app/output/nanopubs-part-N.json`），最终合并。
+- 预算（请求数/时间）过半仍未完成时按顺序降级：**证据绑定 → 断言 → provenance → JSON-LD**，靠后项可放弃。
+- 未完成部分标 `status: "partial"`，在 `status_reason` 写明已覆盖的段落范围与中断位置，不伪造已完成。
 
 ## 异常与边界
 
@@ -77,4 +84,5 @@ description: >-
 - `references/provenance-metadata.md` —— 来源元数据与溯源链
 - `references/quality-check.md` —— 质量检查清单
 - `references/output-schema.md` —— result.json / JSON-LD 字段契约
+- `scripts/validate_nanopub.py` —— 结果机检脚本（词表/字段/@context 校验）
 - `examples/nanopub-examples.md` —— 标注为示例的断言样例（非正式案例）

@@ -25,6 +25,6 @@
 
 ## 说明
 
-- 谓词（predicate）一律取自 `references/relation-vocabulary.md` 受控词表；无合适项时用最接近项并注明，或标 `uncertain`。
+- 谓词（predicate）一律取自 `references/relation-vocabulary.md` 的核心或扩展词表；无合适项时用最接近项并注明，或标 `uncertain`。
 - 每条 `evidence_location` 指回真实位置；`indirect` 断言在 `basis` 写明推断步骤。
 - 数值、单位、显著性、限定条件逐字保留。

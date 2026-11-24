@@ -29,35 +29,41 @@ description: >-
 2. 读 `/input/task.md`：确认范围（单篇 / 多篇、指定主题）。
 3. 记录 `case_id`。`result.json` 必须含 `case_id` 与全部 output_contract 字段。
 
-### 第 1 步：实体识别（抽得准）
+### 第 1 步：读 corpus manifest 与两篇 JATS，登记来源
+1. 读 `corpus-manifest.json`：为每篇论文登记独立 `source_id`（取自 manifest 的论文标识）、`jats_file`、`doi`、`title`、`authors`，写入输出顶层 `sources`。
+2. 元数据**只取自 manifest 与对应 JATS**；根的 DOI/title/authors 属首篇，**不得套到第二篇**。
+3. 按 source **分别抽取**：每篇独立扫描，节点/边锚点一律用该篇 `source_id` + 组织方 JATS `paragraph_id`（非 PDF 页码、非自建 §/¶）。
+4. **禁止跨篇合并实体**，除非两篇明确指向同一物理实例（同一样品编号 / 同一模型 checkpoint）；合并须 `merge_basis` 写明双方 paragraph_id 双侧证据。
+
+### 第 2 步：实体识别（抽得准）
 按 references/entity-recognition.md 抽取实体，类型限：`researcher`、`material`、`method`、`task`、`metric`、`conclusion`。
 - 实体必须是**论文里真实出现**的对象，保留原文表述与位置。
 - 区分**作者自述**与**他人转述/综述引用**：后者标 `attribution=reported`，不作为作者结论。
 - 不凭常识补全概念（原文没写"量子计算"，就不建该节点）。
 
-### 第 2 步：实体对齐（对得齐）
+### 第 3 步：实体对齐（对得齐）
 按 references/entity-alignment.md 处理别名/缩写/大小写/全称简称/同名冲突：
 - 同一对象的不同写法合并为一个节点，记录合并依据。
 - 同名不同对象（同名冲突）**不错误合并**，分节点并标 `homonym`。
 - 产出 `entity_id`（稳定编号）+ `aliases`（别名列表）。
 
-### 第 3 步：关系抽取（连得对）
+### 第 4 步：关系抽取（连得对）
 按 references/relation-extraction.md 抽取关系，谓词用受控词表：`uses`、`compares`、`outperforms`、`supports`、`contradicts` 等。
 - 只建立**有证据支持**的关系；方向与适用条件与原文一致。
-- 区分直接证据 vs 共现/转述/推测：后者标 `evidence=weak` 或不建边。
+- 区分直接证据 vs 共现/转述/推测：后者标 `strength=weak` 或不建边。
 - 因果 vs 相关、优于 vs 比较 不得混用。
 
-### 第 4 步：来源绑定（回得去）
-按 references/source-binding.md，为每个节点、每条边绑定：
-- `evidence_text`（原文片段）+ `evidence_location`（论文标识 + 章节/图表位置）。
-- `evidence_strength`（strong/medium/weak）。
+### 第 5 步：来源绑定（回得去）
+按 references/source-binding.md，为每个节点、每条边绑定四元组锚点：
+- `source_id`（manifest 论文标识）+ `paragraph_id`（组织方 JATS 段落 ID）+ `quote`（≤30 字原文短引）+ `strength`（strong/medium/weak）。
+- 旧式 `§x ¶y` 仅作可选 human-readable `note`，不作锚点依据。
 
-### 第 5 步：图谱查询与导出（查得到）
+### 第 6 步：图谱查询与导出（查得到）
 按 references/graph-query.md：
 - 提供**至少 3 个真实查询**，每个给出结果子图 + 支撑证据 + 无法确定的关系。
 - 导出可读图谱文件（JSON，含 nodes/edges/provenance）。
 
-### 第 6 步：增量更新（多篇场景）
+### 第 7 步：增量更新（多篇场景）
 按 references/graph-query.md 的增量更新约定：新论文加入时保留既有 `entity_id`/节点，说明新增、合并、冲突关系处置方式。
 
 ## 异常与边界
@@ -65,10 +71,19 @@ description: >-
 | 情况 | 处置 |
 |---|---|
 | 扫描件无文本层 | OCR；不可靠则标 `uncertain`，不臆造实体/关系 |
-| 关系无证据 | 不建边，或标 `evidence=weak` 并说明 |
+| 关系无证据 | 不建边，或标 `strength=weak` 并说明 |
 | 实体同名冲突 | 分节点 + 标 `homonym`，不错误合并 |
 | 别名无法确定是否同一实体 | 分节点 + `uncertain`，提示待人工合并 |
 | 关系方向/条件不明 | 标 `uncertain`，不猜测 |
+| 跨篇同名实体 | 默认拆分；合并须同一物理实例 + 双侧 paragraph_id 证据 |
+
+## 检查点与降级
+
+- **骨架先落盘**：开工即写 result.json 骨架（`case_id`/`status`/`sources`/空 `nodes`/`edges`），随时可交。
+- **分源增量**：每处理完一篇论文立即增量写入该篇 nodes/edges，再进下一篇。
+- **预算过半未完成** → 按 `sources → nodes → edges → 查询` 降级：先保 sources 完整，其次节点，再次边。
+- 查询最少 3 个；不足时只交付真实执行过的查询并如实说明数量。
+- `partial` 时写明已完成范围与缺口，不补造。
 
 ## 复用与维护
 

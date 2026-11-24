@@ -15,6 +15,7 @@
 | `evaluated_by` | 由…评价 | 任务/方法 → 指标 |
 | `achieved` | 达到（数值） | 方法 → 指标值 |
 | `applied_to` | 应用于 | 方法 → 任务 |
+| `same_concept` | 跨篇概念同名（**非同一实例**，不合并） | A ↔ B（跨 source_id） |
 
 ## 规则
 
@@ -25,6 +26,7 @@
    - 相关（associated with）不写成因果（causes）。
 4. **适用条件保留**：`under X`、`in vitro`、`n=3` 作为边的 `condition`。
 5. **证据强度**：直接陈述 `strong`；间接推断 `medium`；转述/共现 `weak`。
+6. **跨篇边**：跨 `source_id` 的同名词条只用 `same_concept` 连接并注明"概念同名，非同一实例"，不据此合并节点。
 
 ## 样例（示意）
 

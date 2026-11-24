@@ -16,8 +16,9 @@ references/relation-vocabulary.md       # 关系类型受控词表
 references/evidence-binding.md          # 证据绑定（最小充分 + 直接/间接）
 references/provenance-metadata.md       # 来源元数据与溯源链
 references/quality-check.md             # 质量检查清单
-references/output-schema.md             # result.json / JSON-LD 契约
+references/output-schema.md             # result.json / JSON-LD 契约（含 @context 约定）
 examples/nanopub-examples.md            # 20 条标注为示例的断言
+scripts/validate_nanopub.py             # 结果机检：词表/字段/@context 校验（纯标准库）
 src/reproduce.py                        # 自检入口
 ```
 
@@ -32,6 +33,10 @@ src/reproduce.py                        # 自检入口
 ## 依赖
 
 无强制第三方包；抽取由加载 Skill 的 LLM 执行，`references/` 提供规则与受控词表。
+
+## 质检
+
+导出前运行 `python scripts/validate_nanopub.py /app/output/result.json`：校验谓词在受控词表内、每条记录 assertion/evidence/provenance 齐全且 evidence 非空、JSON-LD 输出含 `@context`；退出码非 0 时按错误清单修正。
 
 ## 异常处理与限制
 

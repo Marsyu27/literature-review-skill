@@ -33,6 +33,8 @@
 ```json
 {"query":"哪些方法在数据集 D 上优于基线？",
  "result_subgraph":[{"source":"E1","predicate":"outperforms","target":"E3"}],
- "evidence":["paper=Demo, §5 Table 2"],
+ "evidence":[{"source_id":"primary","paragraph_id":"pri-p-0031","quote":"Model M achieves 0.81 vs 0.79","strength":"strong"}],
  "uncertain_relations":["E1 vs E4 是否可比较，原文未明说"]}
 ```
+
+> evidence 一律用 `{source_id, paragraph_id, quote, strength}` 四元组（示意 ID 见 kg-examples.md 文件头）。

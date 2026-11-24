@@ -31,10 +31,59 @@
 
 ## JSON-LD 导出
 
-每条 nanopublication 对应一个 JSON-LD 文档，含三部分：
-- `assertion`：主体-关系-客体（谓词取受控词表）。
-- `provenance`：证据来源 + 抽取方法（"由该 Skill 从论文 X 抽取"）。
-- `pubinfo`：论文元数据 + 标识符 + 许可。
+每条 nanopublication 对应一个 JSON-LD 文档。**必须含 `@context`**，否则不是可序列化的 RDF。约定：
+
+- `@context`：schema.org + 自定义 `np` 命名空间（`https://example.org/nanopub-skill/ns#`，承载词表谓词与 nanopub 结构键）。
+- `@id` 规则：`urn:nanopub:<case_id>:<n>`（n 从 1 起按断言序号递增），各 named graph 在其后分别缀 `#assertion` / `#evidence` / `#provenance` / `#pubinfo`。
+- 用 `@graph` 给出四个 named graph 键：`assertion`（主体-谓词-客体，谓词取受控词表，写作 `np:<predicate>`）、`evidence`（最小充分证据 + 位置 + 直接/间接）、`provenance`（证据来源 + 抽取方法"由该 Skill 从论文 X 抽取"）、`pubinfo`（论文元数据 + 标识符 + 许可）。
+
+最小完整示例：
+
+```json
+{
+  "@context": {
+    "schema": "https://schema.org/",
+    "np": "https://example.org/nanopub-skill/ns#",
+    "assertion": "np:assertion",
+    "evidence": "np:evidence",
+    "provenance": "np:provenance",
+    "pubinfo": "np:pubinfo"
+  },
+  "@id": "urn:nanopub:<case_id>:1",
+  "@graph": [
+    {
+      "@id": "urn:nanopub:<case_id>:1#assertion",
+      "@type": "np:Assertion",
+      "np:subject": "Treatment A",
+      "np:predicate": "np:reduces",
+      "np:object": "tumor size",
+      "np:condition": "by 30%, p<0.05, in mice"
+    },
+    {
+      "@id": "urn:nanopub:<case_id>:1#evidence",
+      "@type": "np:Evidence",
+      "np:evidence_text": "<最小充分原文片段>",
+      "np:evidence_location": "§3 ¶2",
+      "np:evidence_type": "direct"
+    },
+    {
+      "@id": "urn:nanopub:<case_id>:1#provenance",
+      "@type": "np:Provenance",
+      "np:wasDerivedFrom": "urn:nanopub:<case_id>:1#evidence",
+      "np:extractionMethod": "由 nanopublication-extraction Skill 从论文 <paper_title> 抽取"
+    },
+    {
+      "@id": "urn:nanopub:<case_id>:1#pubinfo",
+      "@type": "schema:ScholarlyArticle",
+      "schema:name": "<paper_title>",
+      "schema:author": ["<authors>"],
+      "schema:datePublished": "<year>",
+      "schema:identifier": "<DOI/标识符>",
+      "schema:license": "<许可>"
+    }
+  ]
+}
+```
 
 下游程序可直接解析，无需人工清洗。
 

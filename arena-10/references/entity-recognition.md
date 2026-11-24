@@ -20,12 +20,12 @@
    - 作者自述（本文的方法/结果）→ `attribution=self`。
    - 引用他人（"Smith 等人提出 X""综述转述"）→ `attribution=reported`。
    - 转述实体不并入作者结论，可作为独立节点但标来源。
-3. **保留原文位置**：每个实体记 `first_mention`（`§+¶`）与原文写法。
+3. **保留原文位置**：每个实体记 `source_id`（manifest 论文标识）与 `first_mention`（组织方 JATS `paragraph_id`）及原文写法。
 4. 指标等数值 → 实体为指标，数值作为属性/边，不把数值当实体。
 
 ## 样例（示意）
 
 ```json
-{"entity_id":"E1","type":"method","label":"Model M","aliases":["M","the proposed model"],"first_mention":"§2 ¶1","attribution":"self"}
-{"entity_id":"E2","type":"metric","label":"accuracy","aliases":["ACC"],"first_mention":"§5 ¶1","attribution":"self"}
+{"entity_id":"E1","type":"method","label":"Model M","aliases":["M","the proposed model"],"source_id":"primary","first_mention":"pri-p-0007","attribution":"self"}
+{"entity_id":"E2","type":"metric","label":"accuracy","aliases":["ACC"],"source_id":"primary","first_mention":"pri-p-0030","attribution":"self"}
 ```

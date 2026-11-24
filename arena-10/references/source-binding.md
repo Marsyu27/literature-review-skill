@@ -2,13 +2,16 @@
 
 每个节点、每条边都能**回得去**原文。
 
-## 必填来源字段
+## 必填锚点字段（四元组）
 
 | 字段 | 含义 |
 |---|---|
-| `evidence_text` | 支撑该节点/边的原文片段 |
-| `evidence_location` | 论文标识 + 章节/图表/段落位置（如 `paper=D, §3 ¶2, Table 2`） |
-| `evidence_strength` | strong / medium / weak |
+| `source_id` | 论文标识，取自输入 corpus manifest 的论文标识（如 `primary` / `secondary`），**禁止自编** |
+| `paragraph_id` | 组织方 JATS 段落 ID（不是 PDF 页码，也不是自建 `§/¶`） |
+| `quote` | ≤30 字原文短引，逐字摘自该段落 |
+| `strength` | strong / medium / weak |
+
+可选 `note`：human-readable 备注（如旧式 `§3 ¶2, Table 2` 的人工可读位置说明），仅作备注，不作锚点依据。
 
 ## 证据强度
 
@@ -20,14 +23,16 @@
 
 ## 规则
 
-1. 位置指向**真正对应**位置，不写笼统的"见正文"。
-2. 证据跨图表/段落 → 列出所有位置。
-3. 无法确定位置 → 标 `uncertain`，不伪造。
+1. `source_id` + `paragraph_id` 指向**真正对应**的论文与 JATS 段落，不写笼统的"见正文"；`quote` 必须逐字出自该段落。
+2. 证据跨段落/跨篇 → 列出所有锚点（每条各自带 `source_id` + `paragraph_id`）。
+3. 无法确定位置 → 标 `uncertain`，不伪造 paragraph_id。
 4. 转述/综述证据 → 标 `weak` 并注明"非作者结论"。
+5. 根 DOI/title/authors 属首篇，不得套到第二篇；每篇的元数据只取自 manifest 与其自身 JATS。
 
-## 样例（示意）
+## 样例（示意 ID）
 
 ```json
-{"evidence_text":"Model M achieves 0.81 accuracy on dataset D, outperforming baseline 0.79 (p<0.05)",
- "evidence_location":"paper=Demo, §5 Table 2", "evidence_strength":"strong"}
+{"evidence":{"source_id":"primary","paragraph_id":"pri-p-0031",
+ "quote":"Model M achieves 0.81 accuracy","strength":"strong",
+ "note":"human-readable：§5 Table 2"}}
 ```
