@@ -57,14 +57,24 @@ description: >-
 ### 第 5 步：来源绑定（回得去）
 按 references/source-binding.md，为每个节点、每条边绑定四元组锚点：
 - `source_id`（manifest 论文标识）+ `paragraph_id`（组织方 JATS 段落 ID）+ `quote`（≤30 字原文短引）+ `strength`（strong/medium/weak）。
-- **边的 `evidence` 统一为数组**，可含一个或多个四元组；节点的 `evidence` 可保留单对象，查询的 `evidence` 保持数组。
+- **边的 `evidence` 统一为非空数组**，可含一个或多个四元组；节点的 `evidence` 沿用单个对象；查询的 `evidence` 由工具继承为数组，禁止手写。
 - 跨篇边必须有双侧证据：`same_concept` 同时列 primary 与 secondary 的四元组 quote，`condition` 写“同名概念，未证实同一物理实例”。不能由单侧引文推断“无共同 checkpoint”或两篇独立训练。
 - 旧式 `§x ¶y` 仅作可选 human-readable `note`，不作锚点依据。
 
-### 第 6 步：图谱查询与导出（查得到）
-按 references/graph-query.md：
-- 提供**至少 3 个真实查询**，每个给出结果子图 + 支撑证据 + 无法确定的关系。
-- 导出可读图谱文件（JSON，含 nodes/edges/provenance）。
+### 第 6 步：主图 → 真实查询 → 校验 → 导出（查得到）
+严格按 **主图 nodes/edges 完成 → kg_tool.py query 计算 → kg_tool.py validate 验证** 的顺序，按 references/graph-query.md 使用稳定 DSL：
+1. 提供至少 3 个真实查询。每条只由 Agent 写人读 `query`、机器可执行 `query_spec`（`filter_edges`/`neighbors`/`path`）及可选 `uncertain_relations`；自然语言 query 仅展示，不是执行逻辑。
+2. **禁止手写或修补查询的 `result_subgraph`、`evidence`、`execution`**。在 Skill 根目录执行：
+   ```bash
+   python3 scripts/kg_tool.py query --graph /app/output/result.json --update
+   ```
+   也可 `--out /app/output/executed.json` 保留原文件。`--update` 原子覆盖；工具只投影主图边，按命中边继承证据并稳定去重，支持真实空结果。
+3. 随后必须独立验证：
+   ```bash
+   python3 scripts/kg_tool.py validate --graph /app/output/result.json --report /app/output/report.json
+   ```
+   退出 0 才可交付；退出 1 时修正主图或 query_spec 后回到本步开头，绝不手改查询子图、继承证据、matched_edge_ids 或 report。success 少于 3 条会失败；partial 可少于 3 条，但 status_reason 必须含真实数量及未完成原因。
+4. 导出可读 JSON（nodes/edges/provenance）及最终 result.json。主图增量更新后必须重新 query + validate，不得复用旧派生结果。工具不证明 `uncertain_relations` 的语义，也不替代原文证据审读。
 
 ### 第 7 步：增量更新（多篇场景）
 按 references/graph-query.md 的增量更新约定：新论文加入时保留既有 `entity_id`/节点，说明新增、合并、冲突关系处置方式。
@@ -83,10 +93,10 @@ description: >-
 ## 检查点与降级
 
 - **骨架先落盘**：按第 0 步写 `/app/output/result.json`（`case_id`/`status=in_progress`/`status_reason`、全部动态 output_contract 字段空占位及 sources/nodes/edges/queries/uncertainties 等默认结构），随时可交。
-- **分源增量**：每处理完一篇论文立即增量写入该篇 sources/nodes/edges，再进下一篇；查询和 uncertainties 同步更新。
-- **预算过半未完成** → 按 `sources → nodes → edges → 查询` 降级：先保 sources 完整，其次节点，再次边。
-- 查询最少 3 个；不足时只交付真实执行过的查询并如实说明数量。
-- `partial` 时写明已完成范围与缺口，不补造。
+- **分源增量**：每处理完一篇论文立即增量写入该篇 sources/nodes/edges，再进下一篇；先保存 query_spec 草案和 uncertainties，主图可用后再由工具计算派生字段。
+- **预算过半未完成** → 按 `sources → nodes → edges → query_spec → query → validate` 降级：先保 sources 完整，其次节点，再次边。
+- success 查询最少 3 个；不足时将状态诚实设为 `partial`，只保留工具真实执行过的查询，并在 status_reason 写明实际数量及未完成原因。
+- `partial` 时写明已完成范围与缺口，不补造；即使只有真实空结果也不能伪造非空主图或证据。
 
 ## 复用与维护
 
@@ -99,6 +109,8 @@ description: >-
 - `references/entity-alignment.md` —— 别名归一与同名冲突
 - `references/relation-extraction.md` —— 关系抽取与受控词表
 - `references/source-binding.md` —— 来源绑定与证据强度
-- `references/graph-query.md` —— 图谱查询与增量更新
+- `references/graph-query.md` —— filter_edges/neighbors/path DSL、CLI、校验与增量更新
 - `references/output-schema.md` —— result.json / 图谱导出契约
-- `examples/kg-examples.md` —— 标注为示例的图谱片段（非正式案例）
+- `scripts/kg_tool.py` —— 纯标准库查询执行与主图/派生结果验证
+- `examples/kg-examples.md` —— 两篇论文、主图边与工具输出同步的示例（非正式案例）
+- `src/reproduce.py` —— tempfile 真实 CLI 正反回归

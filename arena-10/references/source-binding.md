@@ -24,7 +24,7 @@
 ## 规则
 
 1. `source_id` + `paragraph_id` 指向**真正对应**的论文与 JATS 段落，不写笼统的"见正文"；`quote` 必须逐字出自该段落。
-2. **边的 `evidence` 一律为数组**，即使只有一个锚点也写成 `[{...}]`；节点可保留单个四元组对象，查询 `evidence` 保持数组。证据跨段落/跨篇 → 在数组中列出所有锚点（每条各自带 `source_id` + `paragraph_id`）；跨篇边必须同时有 primary 与 secondary 的双侧证据，单侧引文不能闭合跨篇关系。
+2. **边的 `evidence` 一律为数组**，即使只有一个锚点也写成 `[{...}]`；节点沿用单个四元组对象，查询 `evidence` 为数组。证据跨段落/跨篇 → 在数组中列出所有锚点（每条各自带 `source_id` + `paragraph_id`）；跨篇边必须同时有 primary 与 secondary 的双侧证据，单侧引文不能闭合跨篇关系。查询证据只能由 `scripts/kg_tool.py query` 从命中主图边继承、稳定去重，Agent 不得为查询另写或改引文；validate 会独立重算并拒绝不一致内容。
 3. 无法确定位置 → 标 `uncertain`，不伪造 paragraph_id。
 4. 转述/综述证据 → 标 `weak` 并注明"非作者结论"。
 5. 根 DOI/title/authors 属首篇，不得套到第二篇；每篇的元数据只取自 manifest 与其自身 JATS。
