@@ -1,0 +1,2 @@
+# 无强制第三方依赖。scripts/build_slides.py 优先使用 python-pptx（可选），
+# 未安装时自动回退到仅标准库的最小 OOXML 生成器。

@@ -1,7 +1,21 @@
+# 玻尔高校挑战赛·地大分站赛参赛作品
+
+本仓库汇集玻尔 AI 产品周赛第四期的参赛 Skill。各作品均包含 `SKILL.md`、方法说明、参考规程和示例；评审可通过下表直接进入对应作品目录。
+
+## 作品索引
+
+| 赛题 | challenge ID | 作品位置 |
+|---|---|---|
+| 文献综述生成 | `challenge-e97137c9` | 仓库根目录的 [SKILL.md](SKILL.md) |
+| 阅读03｜文献翻译 | `product-arena-01-5a9928c1` | [arena-01/](arena-01/) |
+| 阅读10｜文献总结与结构化笔记 | `product-arena-06-6d8cf72b` | [arena-06/](arena-06/) |
+| 阅读01｜文献文档解析 | `product-arena-08-3027d350` | [arena-08/](arena-08/) |
+| 阅读14｜Nanopublication | `product-arena-09-0e8befd4` | [arena-09/](arena-09/) |
+| 阅读15｜文献知识图谱构建 | `product-arena-10-760d1a0b` | [arena-10/](arena-10/) |
+
 # literature-review：证据可回链的文献综述生成 Skill
 
-> 本仓库是玻尔高校挑战赛·地大分站赛（玻尔 AI 产品周赛第四期 · challenge-e97137c9「文献综述生成」）的参赛作品。
-> 围绕固定研究问题组织文献证据，产出**每条论断都可回链到具体文献具体位置**的综述草稿与结构化结果。
+> 根目录作品对应 challenge-e97137c9「文献综述生成」。围绕固定研究问题组织文献证据，产出每条论断都可回链到具体文献具体位置的综述草稿与结构化结果。
 
 # literature-review Skill 使用与方法说明
 
