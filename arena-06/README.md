@@ -24,11 +24,15 @@ src/reproduce.py                       # 自检入口
 
 ## 调用方式
 
-加载 Skill 后，Agent 按 SKILL.md 七步流程：读输入并**立即写 result.json 骨架**→结构识别并跑 `build_anchor_index.py` 生成锚点索引→论文卡片→章节总结→知识点提取→正式锚点字段回链（只能取自索引 ID）→逐阶段就地更新 result.json→跑 `validate_anchors.py` 全绿后交付。success 下所有非空 paper_card 字段、每个 section、每个 knowledge_point 都必须覆盖；零锚点不能通过。
+加载 Skill 后，Agent 按 SKILL.md 七步流程：读输入并**立即写 result.json 骨架**→结构识别并跑 `build_anchor_index.py` 生成锚点索引→论文卡片→章节总结→知识点提取→正式锚点字段回链（只能取自索引 ID）→逐阶段就地更新 result.json→跑 `validate_anchors.py` 全绿后交付。result.sections 与索引完整 §ID 集双向对齐，preamble 也计入；success 不漏、不多、不用占位，正常 section 锚点含自身 ID，所有非空 paper_card 字段与正常 knowledge_point 均覆盖；零锚点不能通过。partial 的每个未完成索引章节必须保留 `uncertain + reason` 占位，不能静默删除。
 
 ## 输出契约
 
-`/app/output/result.json` 必含：`case_id`、`status`、`status_reason`、output_contract 字段、`paper_card`、顶层 `paper_card_anchors`（每项 `{field,source_anchor,quote?}`）、`sections`（每项含 `source_anchor`）、`knowledge_points`（含 `source_anchor`）、`uncertainties`。锚点不得只嵌在字符串值里。partial 仅 uncertain 条目可缺锚点并 warning，但至少一个核心有效锚点，且 `status_reason`/`uncertainties` 必须交代。
+`/app/output/result.json` 必含：`case_id`、`status`、`status_reason`、output_contract 字段、`paper_card`、顶层 `paper_card_anchors`（每项 `{field,source_anchor,quote?}`）、`sections`、`knowledge_points`、`uncertainties`。正常 section/knowledge_point 含有效 `source_anchor`，锚点不得只嵌在字符串值里。partial 仅 uncertain 条目可缺锚点并 warning，但至少一个核心有效锚点，且 `status_reason`/`uncertainties` 必须交代；section 占位为 `{"id":"§n","status":"uncertain","reason":"..."}`。不得为全集覆盖编造空泛摘要，无法提炼时只可据原文标“未形成独立论点”并降为 partial。
+
+## 标题识别与不确定性
+
+除 Markdown、阿拉伯编号和全大写标题外，索引器支持 `III.A Methods`、`IV. Experimental Results`、`A. Methods`。对 Introduction/Methods/Results/Discussion/Conclusion 等常见无编号短 Title Case 结构标题，只有满足行长、词数、无句末标点及后续正文约束才采纳；普通长正文不会因编号前缀被切节。顶层索引 `warnings` 记录 `heading_review`（启发式采纳待复核）与 `heading_rejected`（疑似标题未采纳），使用锚点前须回看原文。
 
 ## 依赖
 
@@ -58,4 +62,12 @@ python3 scripts/validate_anchors.py --result /app/output/result.json \
   --index anchor_index.json --report /app/output/anchor_report.json
 ```
 
-除原有 §/¶ 存在性与 quote 严格核对外，还检查必填覆盖与空锚点全集；报告含 `checked`、`valid_checked`、`warnings`、`errors`。
+除 §/¶ 存在性与 quote 严格核对外，还检查必填覆盖、section 自身锚点、章节双向全集与空锚点全集；报告含 `index_sections`、`result_sections`、`missing_sections`、`extra_sections`，以及 `checked`、`valid_checked`、`warnings`、`errors`。
+
+## 实际正反回归
+
+```bash
+python3 src/reproduce.py
+```
+
+自检仅使用 Python 标准库与 `tempfile`：实际调用索引脚本处理含 preamble、阿拉伯/罗马/字母编号和无编号标题的合成论文，再调用校验脚本测试全覆盖成功，以及漏节、伪造 ¶ID、改 quote、漏 paper_card 锚点、partial 静默漏节、success 占位、额外章节、错误自身锚点等失败；partial 逐节 uncertain 占位且存在其他有效核心锚点时 warning 通过。逐项打印实际/期望退出码；全部临时输入、JSON、报告和 manifest 在退出时清理，不污染提交目录。

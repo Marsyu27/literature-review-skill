@@ -36,7 +36,7 @@ description: >-
 1. **先跑 `scripts/build_anchor_index.py` 生成锚点索引**：
    `python3 scripts/build_anchor_index.py --input <论文文本/md> --out anchor_index.json`；
    PDF 使用同一最小调用链：`python3 scripts/build_anchor_index.py --input /input/paper.pdf --out anchor_index.json`，脚本调用可选系统依赖 `pdftotext -layout`。若工具缺失或转换失败会清晰非零退出；此时按错误提示安装 Poppler，或手动转换后再输入文本，不得假装索引已生成。
-   索引按标题行切分章节并赋稳定 ID（`§1..§n`），章节内按空行切段落赋 `¶1..¶m`；
+   索引按标题行切分章节并赋稳定 ID（`§1..§n`），章节内按空行切段落赋 `¶1..¶m`；支持 Markdown、阿拉伯编号、`III.A Methods` / `IV. Experimental Results` / `A. Methods` 等罗马或字母编号、全大写标题。对短的常见无编号 Title Case 结构标题（如 Introduction/Methods/Results/Discussion/Conclusion）仅在行长、词数、无句末标点且后续有正文时保守采纳；采纳的启发式切分与疑似但未采纳的候选都写入索引顶层 `warnings`，必须复核，不能隐藏不确定性。
    后续所有锚点**必须取自该索引中的 ID**，不允许自编号。进入本步时先确认第 0 步骨架已存在，生成索引后立即就地更新 `status_reason`/进度；失败则把骨架更新为 `unable` 并写明原因。
 2. 识别论文自身结构：标题、作者、摘要、章节（编号与标题）、图表、公式、参考文献。
 3. **骨架跟着原文走**，不套用通用摘要模板。若原文章节编号为 `2.3`、`III.A`，笔记保留原编号与层级（索引的 `§n` 是定位 ID，与原编号并列记录，不互相替代）。
@@ -55,10 +55,12 @@ description: >-
 每个非空字段的值都要能指回原文（见第 5 步锚点）。锚点放在顶层配套数组 `paper_card_anchors`，每项为 `{"field":"<paper_card 字段名>","source_anchor":"§x ¶y","quote":"可选逐字原文"}`，不塞进字段字符串。**结论成立的前提条件必须记下**，不省略限定词。
 
 ### 第 3 步：章节总结（对得上 + 留得住）
-逐章节提炼，不是通篇压缩：
-- 每节输出：`目的`、`方法/论证`、`结果/要点`、`承接（与前后节关系）`，并新增正式字段 `source_anchor`。
+以索引的**完整 §ID 集合**逐章节提炼，不是通篇压缩；preamble 也按普通 § 处理：
+- 每节输出：`目的`、`方法/论证`、`结果/要点`、`承接（与前后节关系）`，并新增正式字段 `source_anchor`。正常 section 的 `id` 必须对应索引，`source_anchor` 必须包含自己的 §ID；不能只引用别节。
+- success 不得漏掉任何索引章节、不得添加索引外章节，也不接受 `uncertain` 占位。partial 同样不得静默漏节：每个未正常完成的索引章节都必须保留 `{"id":"§n","status":"uncertain","reason":"..."}`，可暂缺 `source_anchor` 并产生 warning；其他正常条目仍须有效回链。
 - 保留章节间逻辑链（如"第 2 节提出 X，第 3 节用 Y 验证"）。
 - 关键数值、公式编号、图表引用保留。
+- **不得为凑全集覆盖编造空泛摘要**。确实无法提炼时，只能依据原文标注“未形成独立论点”，将对应 section 标为 `uncertain`、整体标为 `partial` 并说明原因，不得补造目的、方法、结果或承接。
 
 ### 第 4 步：知识点提取（用得上）
 1. 抽取可检索条目：概念、变量、方法、结论、公式、数据集、评价指标。
@@ -67,17 +69,17 @@ description: >-
 4. 每条知识点附：`id`、`label`、`value`、`source_anchor`、`type`（concept/variable/method/result/metric/limitation）。
 
 ### 第 5 步：锚点回链（找得回）
-每条笔记、每个非空 paper_card 字段、每个 section、每个知识点都要**锚点**（见 references/source-anchoring.md）。paper_card 使用 `paper_card_anchors`，sections/knowledge_points 使用各自 `source_anchor`：
+每条正常笔记、每个非空 paper_card 字段、每个正常 section、每个正常知识点都要**锚点**（见 references/source-anchoring.md）；partial 的不确定条目按下述显式占位规则降级。paper_card 使用 `paper_card_anchors`，sections/knowledge_points 使用各自 `source_anchor`：
 - 锚点 = 第 1 步索引中的稳定 ID：`§x` 或 `§x ¶y`；可附带 `Fig./Table/Eq. 编号` 作补充定位。
 - **只允许使用索引里存在的 §/¶ ID**；`page=N` 仅在输入材料自带真实页码时附加。
 - 锚点必须指向**真正对应的位置**，不是笼统的"见正文"；带 `quote` 的条目，quote 必须逐字摘自被引段落。
-- success 下不得缺锚点；partial 下仅明确 `status=uncertain` 的条目可暂缺锚点并保留 warning，同时必须在 `status_reason` 与非空 `uncertainties` 交代缺口，且核心内容至少有一个真实有效锚点。无法确定位置 → 标 `uncertain`，不伪造锚点。
+- success 下不得缺锚点；partial 下仅明确 `status=uncertain` 的条目可暂缺锚点并保留 warning，同时必须在 `status_reason` 与非空 `uncertainties` 交代缺口，且核心内容至少有一个真实有效锚点。section 另有全集约束：partial 的每个不确定章节都须以自身 §ID 占位，success 不允许占位。无法确定位置 → 标 `uncertain`，不伪造锚点。
 
 ### 第 6 步：输出 result.json
 写 `/app/output/result.json`（见 references/output-schema.md），含：
 - `case_id`、`status`、`status_reason`
 - output_contract 全部字段
-- `paper_card`、顶层 `paper_card_anchors`、`sections`（每项含 `source_anchor`）、`knowledge_points`（每项含 `source_anchor`）、`uncertainties`
+- `paper_card`、顶层 `paper_card_anchors`、`sections`（正常项含 `source_anchor`，partial 异常项含逐节占位）、`knowledge_points`（正常项含 `source_anchor`）、`uncertainties`
 
 同时输出 Markdown 笔记（可读、可检索、可比较）。
 
@@ -87,15 +89,16 @@ description: >-
 python3 scripts/validate_anchors.py --result /app/output/result.json \
     --index anchor_index.json --report /app/output/anchor_report.json
 ```
-- 退出码 0：锚点全部存在于索引、quote 与原文一致，且 success 的非空 paper_card 字段、每个 section、每个 knowledge_point 均有正式锚点；`checked=0` 不能通过（unable 无内容例外）。
-- partial 可有 uncertain 缺锚点 warning，但至少一个核心锚点真实有效，并检查 `status_reason`/`uncertainties` 已交代；warning 不等于可省略这些说明。
-- 退出码 1：按报告逐条修正（补正式锚点、换用索引中真实存在的 ID、订正 quote），或仅在 partial 下把对应条目标 `uncertain` 后重跑；**未通过核验的锚点不得留在交付物中**。
+- 退出码 0：锚点全部存在于索引、quote 与原文一致，且 success 的非空 paper_card 字段、每个 section、每个 knowledge_point 均有正式锚点；success/partial 均完成索引与结果章节双向对照，正常 section 锚点含自身 §ID；`checked=0` 不能通过（unable 无内容例外）。
+- partial 可有 uncertain 缺锚点 warning，但至少一个核心锚点真实有效，并检查 `status_reason`/`uncertainties` 已交代；每个未完成的索引章节必须显式占位，warning 不等于可省略这些说明。
+- 报告的 `index_sections` / `result_sections` / `missing_sections` / `extra_sections` 分别列出完整索引 ID、结果 ID、漏节与索引外多节；前两者完整不代表后两者为空，交付前必须检查后两者及占位状态。
+- 退出码 1：按报告逐条修正（补正式锚点、换用索引中真实存在的 ID、订正 quote、补齐/移除章节），或仅在 partial 下把对应条目标 `uncertain` 后重跑；**未通过核验的锚点不得留在交付物中**。
 
 ## 检查点与降级
 
 - 检查点 0/1：第 0 步读完输入即写上述 `/app/output/result.json` 骨架；第 1 步开始先确认骨架存在，之后每阶段就地更新，绝不等到最终交付才创建文件。
-- 检查点 1（第 1 步后）：`anchor_index.json` 已生成且章节数与原文观感一致；为 0 节 → 输入无标题结构，改用"全文一节"降级并说明，同时更新 result.json。
-- 检查点 2（第 5 步后）：每条正式 `source_anchor` 都能人工在索引中查到，paper_card 的非空字段均在 `paper_card_anchors` 覆盖；查不到/漏覆盖 → 立即补锚点或换 ID，仅在 partial 下可标 `uncertain`。
+- 检查点 1（第 1 步后）：`anchor_index.json` 已生成且章节数与原文观感一致，逐条复核 `warnings` 中采纳/拒绝的疑似标题；为 0 节 → 输入无标题结构，改用"全文一节"降级并说明，同时更新 result.json。
+- 检查点 2（第 5 步后）：每条正式 `source_anchor` 都能人工在索引中查到，result.sections 与索引 §ID 全集双向一致，正常 section 含自身锚点，paper_card 的非空字段均在 `paper_card_anchors` 覆盖；查不到/漏覆盖 → 立即补锚点或换 ID，仅在 partial 下可标 `uncertain` 并逐节占位。
 - 检查点 3（第 7 步）：`validate_anchors.py` 退出码 0 且 checked>0（unable 无内容例外）；非 0 → 回到第 5 步修正，不得带病交付。
 - 降级：索引生成失败（输入为空/无法读取、PDF 无 pdftotext 或转换失败）→ 在既有骨架上标 `status=unable` 并写明原因；个别段落无法定位 → partial 下条目级 `uncertain`，同时填写 `status_reason`/`uncertainties`。
 - 预算不足时优先保证：锚点索引 + 核验通过 > 知识点数量。

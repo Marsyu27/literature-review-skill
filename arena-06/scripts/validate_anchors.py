@@ -6,12 +6,16 @@
      形态须为 `§x` 或 `§x ¶y`（可附带 Table/Fig 等补充定位）。
   2. 每个 §x 必须存在于 anchor_index.json 的 sections；若带 ¶y，该段落必须存在。
   3. 非空 quote 必须是被引范围原文的子串；大小写不敏感、空白归一。
-  4. success 下，所有非空 paper_card 字段必须由顶层 paper_card_anchors 覆盖，
+  4. success/partial 下双向对照索引与 result.sections 的完整 §ID：success 不得
+     缺节、多节或使用 uncertain 占位；partial 的每个未完成索引章节都必须有
+     {id, status=uncertain, reason} 占位，不能静默漏节。正常 section 的
+     source_anchor 必须包含自己的 §ID，preamble 不例外。
+  5. success 下，所有非空 paper_card 字段必须由顶层 paper_card_anchors 覆盖，
      每个 section 和 knowledge_point 都必须有 source_anchor。
-  5. partial 下仅明确 status=uncertain 的条目可缺锚点（warning），但至少要有
+  6. partial 下仅明确 status=uncertain 的条目可缺锚点（warning），但至少要有
      一个核心内容真实有效的锚点，且 status_reason/uncertainties 必须交代缺口。
      仅有空内容的 unable 可不产生锚点，但必须写 status_reason。
-  6. checked=0 的空锚点全集不得通过（上述 unable 例外除外）。
+  7. checked=0 的空锚点全集不得通过（上述 unable 例外除外）。
 
 paper_card_anchors 项形如 {"field":"findings", "source_anchor":"§2 ¶1",
 "quote":"可选原文"}；partial 的缺锚点占位可写 {"field":"limitations",
@@ -177,6 +181,86 @@ def check_required_coverage(result, errors, warnings):
             error(errors, "$.uncertainties", "partial 必须用非空 uncertainties 交代未决项/缺锚点")
 
 
+def check_section_alignment(result, index_sections, errors, warnings):
+    """双向核对完整章节集，返回报告中使用的四个 ID 列表。"""
+    status = result.get("status")
+    enforce_complete_set = status in ("success", "partial")
+    result_sections = result.get("sections")
+    if not isinstance(result_sections, list):
+        result_sections = []
+
+    result_ids = []
+    seen = set()
+    for i, section in enumerate(result_sections):
+        path = f"$.sections[{i}]"
+        if not isinstance(section, dict):
+            continue  # 类型错误已由 check_required_coverage 报告
+        sid = section.get("id")
+        if not isinstance(sid, str) or not sid.strip():
+            error(errors, path, "section 缺少非空字符串 id（须为索引中的 §n）")
+            continue
+        sid = sid.strip()
+        result_ids.append(sid)
+        if sid in seen:
+            error(errors, path, f"section id {sid!r} 重复；每个索引章节只能对应一个结果项")
+        else:
+            seen.add(sid)
+        if sid not in index_sections:
+            error(errors, path, f"额外章节 {sid} 不存在于索引的完整 §ID 集合")
+
+        uncertain = section.get("status") == "uncertain"
+        has_anchor = (
+            isinstance(section.get("source_anchor"), str)
+            and section["source_anchor"].strip()
+        )
+        if uncertain:
+            reason = section.get("reason")
+            if status == "success":
+                error(errors, path, f"success 不接受索引章节 {sid} 的 uncertain 占位")
+            if status == "partial":
+                if not (isinstance(reason, str) and reason.strip()):
+                    error(errors, path, f"partial 的章节占位 {sid} 必须含非空 reason")
+                if has_anchor:
+                    warnings.append({
+                        "path": path,
+                        "reason": f"partial 中索引章节 {sid} 明确为 status=uncertain；请人工复核占位原因",
+                    })
+        else:
+            own_anchor = False
+            if has_anchor:
+                own_anchor = any(
+                    f"§{match.group(1)}" == sid
+                    for match in ANCHOR_RE.finditer(section["source_anchor"])
+                )
+            if not own_anchor:
+                error(
+                    errors, path,
+                    f"正常 section {sid} 的 source_anchor 必须包含自己的 §ID {sid}",
+                    section.get("source_anchor") if has_anchor else None,
+                )
+
+    missing = [sid for sid in index_sections if sid not in seen]
+    if enforce_complete_set:
+        for sid in missing:
+            requirement = (
+                "success 必须覆盖索引中的每个章节（preamble 也按普通 § 处理）"
+                if status == "success"
+                else "partial 不得静默漏节；必须保留 {id, status:'uncertain', reason:'...'} 占位"
+            )
+            error(errors, "$.sections", f"缺少索引章节 {sid}；{requirement}")
+
+    extras = []
+    for sid in result_ids:
+        if sid not in index_sections and sid not in extras:
+            extras.append(sid)
+    return {
+        "index_sections": list(index_sections),
+        "result_sections": result_ids,
+        "missing_sections": missing,
+        "extra_sections": extras,
+    }
+
+
 def main():
     ap = argparse.ArgumentParser(description="校验 result.json 锚点、quote 与必填覆盖")
     ap.add_argument("--result", required=True, help="result.json 路径")
@@ -205,6 +289,7 @@ def main():
     valid_core_checked = 0
 
     check_required_coverage(result, errors, warnings)
+    section_alignment = check_section_alignment(result, sections, errors, warnings)
 
     for path, anchor, quote in collect_entries(result):
         checked += 1
@@ -276,6 +361,7 @@ def main():
         "checked": checked,
         "valid_checked": valid_checked,
         "valid_core_checked": valid_core_checked,
+        **section_alignment,
         "ok": not errors,
         "warnings": warnings,
         "errors": errors,

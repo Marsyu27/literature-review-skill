@@ -32,16 +32,18 @@ description: >-
 3. 术语表是**冻结**的：后续标题、摘要、正文、图注、结论中，同一术语必须用同一译名；发现漂移即回改。
 4. 原文术语本就混用时，以**多数派**为准，在术语表标注"已按多数统一，原文另有 X"，并把冲突点放进 `uncertainties`。
 
-### 第 2 步：长文分段（段落全）
-1. 按**语义边界**切分：章节 → 段落 → 句子。保留原编号（章节号、段号、句号）。
-2. 跨页、跨栏、跨章节的段落：按语义接续，不重复、不遗漏、不错位。
-3. 页眉页脚、脚注、边注：单独翻译并标记，不混入正文。
-4. 每段分配唯一 `段落号`（如 `§2 ¶3`），译文与原文一一对应。
+### 第 2 步：固化源文快照与长文分段（段落全）
+1. 先确定规范化原文并**原样保存**为 `/app/work/source-snapshot.txt`，此后分段、机检与复核都使用同一快照，不得一边翻译一边改源文。快照中的换行和段间分隔符也占用字符区间。
+2. 按**语义边界**切分：章节 → 段落 → 句子。保留原编号（章节号、段号、句号）。每项记录唯一 `id` / `source` / `source_start` / `source_end`；下标是 Python 字符下标（不是 UTF-8 字节数），且必须满足 `snapshot[source_start:source_end] == source`。可把段尾换行并入前一段，以便区间连续。
+3. 跨页、跨栏、跨章节的段落：按语义接续，不重复、不遗漏、不错位。区间必须递增且不重叠；ID 不得重复。
+4. 页眉页脚、脚注、边注：单独翻译并标记，不混入正文。
+5. `success` 的区间必须从 0 到 `len(snapshot)` 连续全覆盖；尚未翻译的区间不能用空 target 占位，应改判 `partial` 并在 `uncovered_ranges` 逐项声明。
 
 ### 第 3 步：逐段翻译 + 双语对照（段落全 + 可核验）
-对每段输出结构化对照（不要只给译文）：
-- `source`（原文段落，含段号）
-- `target`（译文）
+对每段输出结构化对照（不要只给译文），并同步写入工作版 `segments.json`：
+- `id`（唯一段号）、`source`（原文段落，含段号）
+- `target`（非空译文；译不出时写非空的 unable 说明标记，不留空）
+- `source_start` / `source_end`（对应已保存快照的半开字符区间）
 - `basis`（译法依据，尤其术语与关键句）
 
 **逐句**翻译，不是逐段意译重写。句子边界保留。
@@ -52,32 +54,37 @@ description: >-
 - **否定与限定**：否定范围、only if/unless/under X、量词 some/most/all 保持原意。
 - **因果 vs 让步**：because/causes（因果）与 although/despite（让步）不得互换。
 - **数字与单位**：数值、单位、显著性（p<0.05）、置信区间**一字不改**。
-- **公式与编号**：公式原样保留，`(3)`/`Eq.(2)` 编号对应不变。
+- **公式与编号**：`$...$`、`$$...$$`、`\(...\)`、`\[...\]` 公式内容仅可规范化空白，`ln`→`lg`、上下标或运算符改变都不合格；`Fig. 2` 可译为 `图2`，`Eq. (3)` 可译为 `公式(3)`，但图表/公式引用类型与编号必须不变（`Fig. 2`→`Table 2`、`图2`→`表2`均失败）。
 - **文献引用**：`[12]`/`(Smith, 2020)` 指向不变。
 
-### 第 5 步：译文核验（可核验，机械检查先行）
-先把第 1 步术语表落盘为 `terminology.json`、第 3 步双语段落落盘为 `segments.json`（机读格式见 references/terminology-lock.md 与 references/output-schema.md），然后**先跑两个核验脚本**，再人工回核脚本覆盖不了的项：
+### 第 5 步：译文与交付核验（可核验，机械检查先行）
+先把第 1 步术语表落盘为 `terminology.json`、第 3 步工作分段落盘为 `segments.json`，并按 references/output-schema.md 写出候选 `/app/output/result.json`。三个核验脚本均使用同一份源文快照与工作分段：
 
 1. `python3 scripts/check_terminology.py --terms terminology.json --segments segments.json --report work/terminology-report.json`
    —— 机械检查术语**回填**（source 命中 `term` 或任一 alias 而 target 缺 locked 译名 → error）、旧译**漂移**（warning）、**frozen** 逐字约束；同一表面形式的多条目必须各有 `context`，每段只能命中一个语境候选，否则明确配置 error，有 error 退出码 1。
 2. `python3 scripts/check_conservation.py --segments segments.json --report work/conservation-report.json`
-   —— 逐段核对数字（含正负号、Unicode −、小数/百分数/千分位、`10^-3` 指数与 `1e-3` 科学计数）、引用标记（`[n]` 与 `(Author, year)`）、带单位量（如 `300 K`、`2.5 m/s`）是否守恒；**missing 或 added 任一非空都退出码 1**，added 不是备注。
+   —— 逐段核对数字、文献引用、带单位量、四种定界形式的公式多重集合及图表/公式引用的**类型+编号**。公式只规范化空白；英文与中文标签可互译，不要求英文标签原样保留。**missing 或 added 任一非空都退出码 1**，added 不是备注。公式、图表/公式编号和文献引用会先掩码再抽数字，避免重复计数。
+3. `python3 scripts/validate_translation_delivery.py --case /input/case.json --source-text work/source-snapshot.txt --result /app/output/result.json --work-segments segments.json --report work/delivery-report.json`
+   —— 核 case_id、output_contract 字段存在性及可推断基本类型、段 ID、非空 target、快照逐字切片、递增不重叠区间、覆盖状态、partial/unable 的 `status_reason` 与精确 `uncovered_ranges`，并逐字段防止工作 `segments.json` 与最终 `result.segments` 漂移。未提供 `--work-segments` 时仅省略漂移比对，不省略其余检查。无法推断的契约类型记 warning；success 带 warning 不能通过，partial/unable 必须把对应人工核验缺口列出。
 
-**两个脚本全绿（退出码均为 0）才允许交付；红则修复译文后重跑，直到全绿；确属原文残缺的残余缺口如实写入 `uncertainties` 并说明脚本报告路径。**
+**交付门禁按状态区分，不能拿“全绿”掩盖降级，也不能拿 partial 逃避检查：**
+- `success`：区间从 0 到快照末尾连续全覆盖（`uncovered_ranges` 为 `[]` 或省略），三个脚本均退出 0，术语 drift warning 与契约类型 warning 均已解决，且下述语义人工回核完成；这才叫“所有检查全绿”。
+- `partial`：仍须跑结构/覆盖门禁；所有已交付段必须 ID 唯一、target 非空、区间合法递增不重叠、source 与快照一致，若有工作分段则 work/final 一致。`status_reason` 必须非空，`uncovered_ranges` 必须精确列出所有未译区间。术语/守恒报告存在 error、未运行 `--work-segments`、未做语义人工回核或契约类型只能人工判断时，均须把范围与报告路径列入 `status_reason` / `uncertainties`；delivery 脚本退出 0 只代表结构与覆盖声明通过，**不代表语义或全部机检通过**。
+- `unable`：同样保留合法结构、精确未覆盖区间和非空原因，不编造已完成状态。
 
-脚本覆盖不了的项仍需人工逐段回核（读译文，对照原文）：
+三个脚本覆盖不了的项仍需人工逐段回核（读译文，对照原文）：
 1. 否定/限定/因果是否未变（references/hedge-strength.md）；
 2. 指代对象是否一致；
 3. 是否漏译、多译、错位。
-生成**需人工确认清单**（译不准、歧义、术语冲突、原文残缺），写入 `uncertainties`。
+生成**需人工确认清单**（译不准、歧义、术语冲突、原文残缺、未执行的语义核验），写入 `uncertainties`。success 修复后重跑至全绿；partial 如实交付缺口，不得静默省略核验。
 
 ### 第 6 步：产出结果
-按 references/output-schema.md 写 `/app/output/result.json`，并输出双语对照文档（Markdown：段号 + 原文 + 译文 + 依据）与术语表。
+交付通过上述状态门禁的 `/app/output/result.json`，并输出双语对照文档（Markdown：段号 + 快照区间 + 原文 + 译文 + 依据）与术语表；`tool_commands` 记录实际执行的三条命令和报告路径。
 
 ## 检查点与降级
 
-1. 第 0 步读完输入即写 `/app/output/result.json` 骨架（`case_id` + output_contract 字段占位 + `status:"in_progress"`），任何时刻中断都有可交付物。
-2. 按章节分块增量更新：每译完一章即回写 result.json 与 segments.json，不等到全文译完。
+1. 第 0 步读完输入即写 `/app/output/result.json` 工作骨架（`case_id` + output_contract 字段占位 + `status:"in_progress"`）。中断准备交付时必须改为诚实的 `partial/unable`，删除空 target 占位段，并补齐 `uncovered_ranges` 与原因；工作骨架本身不冒充通过最终门禁的结果。
+2. 按章节分块增量更新：每译完一章即回写 result.json 与 segments.json，不等到全文译完；两者始终使用同一快照及相同 ID/source/target/区间。
 3. 预算过半按 **译文主体 → 术语表 → 守恒核验 → uncertainties** 降级：先保译文主体完整，再保术语表，核验缺口如实写进 `uncertainties`。
 4. 每次降级在 `status_reason` 写明降了哪一级、缺口在哪一章。
 
@@ -99,7 +106,9 @@ description: >-
 
 详见随附资源：
 - `scripts/check_terminology.py` —— 术语回填/漂移/frozen 机械核验（纯标准库）
-- `scripts/check_conservation.py` —— 数字/引用/带单位量守恒逐段核验（纯标准库）
+- `scripts/check_conservation.py` —— 数字/文献引用/带单位量/公式/图表公式引用守恒逐段核验（纯标准库）
+- `scripts/validate_translation_delivery.py` —— 快照切片、ID/区间/覆盖、output_contract 与 work/final 交付门禁（纯标准库）
+- `references/result.schema.json` —— result.json 静态 JSON Schema（动态区间与覆盖仍由上述脚本核验）
 - `references/terminology-lock.md` —— 术语表抽取、锁定与冲突处理
 - `references/hedge-strength.md` —— 限定词/程度词强度分级与守恒（关系准核心）
 - `references/bilingual-alignment.md` —— 段落级双语对照与段号约定

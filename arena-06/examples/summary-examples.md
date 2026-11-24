@@ -41,3 +41,33 @@
 
 - 原文未给样本量时，`paper_card.data` 写 `"数据集 D（样本量 not_reported）"`，配套锚点写 `{"field":"data","source_anchor":"§3 ¶1"}`，并把未报告项写入 `uncertainties`。
 - 若 partial 中连位置也无法确认，可写 `{"field":"data","status":"uncertain","reason":"原文定位待确认"}`，但必须有其他真实有效锚点，并在 `status_reason`/`uncertainties` 交代；success 不允许这样缺锚点。
+
+## 示例 6：完整章节覆盖与 partial 逐节占位
+
+假设索引全集是 `§1=(preamble)`、`§2=Introduction`、`§3=III.A Methods`、`§4=Results`，result.sections 必须恰含这四个 ID；正常项的锚点必须含自身 ID：
+
+```json
+{
+  "status": "partial",
+  "status_reason": "§3 未形成独立论点，保留占位；其余章节已完成",
+  "sections": [
+    {"id":"§1","title":"(preamble)","results":"记录题名、作者与摘要原文要点","source_anchor":"§1","status":"ok"},
+    {"id":"§2","title":"Introduction","results":"记录研究问题","source_anchor":"§2","status":"ok"},
+    {"id":"§3","status":"uncertain","reason":"依据原文暂标未形成独立论点，待人工复核"},
+    {"id":"§4","title":"Results","results":"记录结果与限定条件","source_anchor":"§4","status":"ok"}
+  ],
+  "uncertainties": ["§3 未形成独立论点，未编造摘要"]
+}
+```
+
+删去 §3 或额外添加 §999 均失败；把 §3 的占位放进 success 也失败。不得为了通过覆盖检查给占位补写空泛的目的、方法、结果或承接。
+
+## 示例 7：标题识别 warning 不等于确定结构
+
+索引可识别 `III.A Methods`、`IV. Experimental Results`、`A. Methods`，并对短且后续有正文的常见无编号 Title Case 结构标题作保守识别。索引顶层 warnings 示例：
+
+```json
+{"line":18,"text":"Methods","type":"heading_review","reason":"无编号短 Title Case 行按保守规则识别为标题；请人工复核切分"}
+```
+
+`heading_rejected` 表示疑似标题未采纳，`heading_review` 表示启发式切分仍需复核；生成结果前应回看原文，而不是隐藏 warning。

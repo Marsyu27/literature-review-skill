@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "result.schema.json",
+  "title": "Scientific literature translation delivery",
+  "description": "Static delivery shape. Run scripts/validate_translation_delivery.py for snapshot slicing, exact coverage, output_contract declarations and work/final drift, which JSON Schema alone cannot verify.",
+  "type": "object",
+  "required": ["case_id", "status", "status_reason", "segments"],
+  "properties": {
+    "case_id": {"type": "string", "minLength": 1},
+    "status": {"enum": ["success", "partial", "unable"]},
+    "status_reason": {
+      "type": "string",
+      "description": "Empty is allowed only for success; partial/unable require a non-blank reason."
+    },
+    "source_lang": {"type": "string"},
+    "target_lang": {"type": "string"},
+    "terminology": {"type": "array"},
+    "segments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "source", "target", "source_start", "source_end"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "source": {
+            "type": "string",
+            "description": "Exactly source_snapshot[source_start:source_end], using Unicode character offsets rather than byte offsets."
+          },
+          "target": {"type": "string", "pattern": "\\S"},
+          "source_start": {"type": "integer", "minimum": 0},
+          "source_end": {"type": "integer", "minimum": 0},
+          "basis": {"type": "string"},
+          "status": {"enum": ["ok", "uncertain", "unable"]}
+        },
+        "additionalProperties": true
+      }
+    },
+    "uncovered_ranges": {
+      "type": "array",
+      "description": "Canonical items are source_start/source_end objects; two-item arrays are accepted by the validator. The array must exactly equal all gaps, in ascending order.",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": ["source_start", "source_end"],
+            "properties": {
+              "source_start": {"type": "integer", "minimum": 0},
+              "source_end": {"type": "integer", "minimum": 0}
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "array",
+            "prefixItems": [
+              {"type": "integer", "minimum": 0},
+              {"type": "integer", "minimum": 0}
+            ],
+            "items": false,
+            "minItems": 2,
+            "maxItems": 2
+          }
+        ]
+      }
+    },
+    "uncertainties": {"type": "array"},
+    "tool_commands": {"type": "array"}
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"status": {"enum": ["partial", "unable"]}},
+        "required": ["status"]
+      },
+      "then": {
+        "required": ["status_reason", "uncovered_ranges"],
+        "properties": {
+          "status_reason": {"type": "string", "pattern": "\\S"}
+        }
+      }
+    }
+  ],
+  "additionalProperties": true
+}
