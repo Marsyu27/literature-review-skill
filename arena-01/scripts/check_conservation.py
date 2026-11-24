@@ -5,7 +5,8 @@
 替代"全靠模型自查"。
 
 抽取三类条目并逐段比对（多重集合，计数敏感）：
-  1. 数字 number    —— 含小数、百分数、千分位（比较时去掉千分位逗号）；
+  1. 数字 number    —— 含正负号（含 Unicode −）、小数、百分数、千分位、
+                      指数 `10^-3`/`10^3` 与科学计数 `1e-3`；
   2. 引用 citation  —— `[12]`、`[1-3]` 与 `(Author, year)`（含 et al./and/&）两种形态；
   3. 带单位量 quantity —— 数字+单位 token（m/s、kg、K、mol、mol/L、µm、°C、ppm 等）。
 
@@ -16,7 +17,7 @@
 
 用法：
   python3 scripts/check_conservation.py --segments segments.json [--report out.json]
-退出码：missing 非空 → 1；否则 0。仅依赖 Python 标准库。
+退出码：missing 或 added 任一非空 → 1；否则 0。仅依赖 Python 标准库。
 """
 import argparse
 import json
@@ -34,9 +35,13 @@ UNITS = [
 ]
 _UNIT_ALT = "|".join(re.escape(u) for u in sorted(UNITS, key=len, reverse=True))
 
-NUM_RE = re.compile(r"\d{1,3}(?:,\d{3})+(?:\.\d+)?%?|\d+(?:\.\d+)?%?")
+_SIGN = r"[+\-−]?"
+_DECIMAL = r"(?:\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?|\.\d+)"
+_EXPONENT = r"(?:[eE][+\-−]?\d+|\^(?:\{[+\-−]?\d+\}|[+\-−]?\d+))?"
+NUM_RE = re.compile(r"(?<![A-Za-z0-9_.])" + _SIGN + _DECIMAL + _EXPONENT + r"%?(?![A-Za-z0-9_])")
 QTY_RE = re.compile(
-    r"(?P<num>\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)\s?(?P<unit>" + _UNIT_ALT + r")(?![A-Za-z0-9µμ/])"
+    r"(?<![A-Za-z0-9_.])(?P<num>" + _SIGN + _DECIMAL + _EXPONENT + r")"
+    r"\s?(?P<unit>" + _UNIT_ALT + r")(?![A-Za-z0-9µμ/])"
 )
 BRACKET_CITE_RE = re.compile(r"\[\d+(?:\s*[–—,\-]\s*\d+)*\]")
 AUTHOR_YEAR_RE = re.compile(
@@ -51,7 +56,8 @@ def _norm_space(s):
 
 
 def _norm_num(s):
-    return s.replace(",", "")
+    """保留符号/指数，只统一等价书写中的千分位、Unicode 负号与指数花括号。"""
+    return re.sub(r"\^\{([+\-]?\d+)\}", r"^\1", s.replace(",", "").replace("−", "-"))
 
 
 def extract(text):
@@ -111,6 +117,7 @@ def main():
 
     report = {
         "checked_segments": len(segments),
+        "ok": not missing and not added,
         "missing": missing,
         "added": added,
     }
@@ -121,7 +128,7 @@ def main():
         print(f"报告已写入 {args.report}：missing={len(missing)} added={len(added)}")
     else:
         print(text)
-    sys.exit(1 if missing else 0)
+    sys.exit(1 if missing or added else 0)
 
 
 if __name__ == "__main__":

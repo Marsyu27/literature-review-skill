@@ -16,14 +16,14 @@
 
 ```json
 {"entity_id":"E1","label":"stochastic gradient descent","aliases":["SGD","随机梯度下降"],"source_id":"primary","merge_basis":"pri-p-0003 首现展开，全篇同指","homonym":false}
-{"entity_id":"E9","label":"Model A","aliases":["A"],"source_id":"secondary","homonym":true,"note":"与另一论文的 Model A 同名不同物"}
+{"entity_id":"E9","label":"Model A","aliases":["A"],"source_id":"secondary","homonym":false,"status":"uncertain","note":"与另一论文的 Model A 仅确认同名，实例关系待确认"}
 ```
 
 ## 示例 3：关系抽取 + 来源（连得对 + 回得去）
 
 ```json
 {"edge_id":"R1","source":"E1","predicate":"outperforms","target":"E3","condition":"on dataset D, p<0.05",
- "evidence":{"source_id":"primary","paragraph_id":"pri-p-0031","quote":"Model M achieves 0.81 vs 0.79","strength":"strong","note":"human-readable：§5 Table 2"}}
+ "evidence":[{"source_id":"primary","paragraph_id":"pri-p-0031","quote":"Model M achieves 0.81 vs 0.79","strength":"strong","note":"human-readable：§5 Table 2"}]}
 ```
 
 > 原文若只说"比较"未说更优，用 `compares` 而非 `outperforms`。
@@ -45,9 +45,12 @@ paper2（`secondary`）的 Model M 建为**独立实体 E7**，与 paper1（`pri
 {"action":"add","entity_id":"E7","type":"method","label":"Model M","aliases":["M"],"source_id":"secondary",
  "evidence":{"source_id":"secondary","paragraph_id":"sec-p-0012","quote":"We introduce Model M","strength":"strong"}}
 {"edge_id":"R12","source":"E7","predicate":"same_concept","target":"E1",
- "condition":"概念同名，非同一实例：两篇各自独立提出/训练，无共同 checkpoint",
- "evidence":{"source_id":"secondary","paragraph_id":"sec-p-0012","quote":"We introduce Model M","strength":"medium"}}
+ "condition":"同名概念，未证实同一物理实例",
+ "evidence":[
+   {"source_id":"primary","paragraph_id":"pri-p-0007","quote":"We call our method Model M","strength":"strong"},
+   {"source_id":"secondary","paragraph_id":"sec-p-0012","quote":"We introduce Model M","strength":"strong"}
+ ]}
 {"action":"conflict","edge1":"R1 (A 优于 B)","edge2":"R9 (B 优于 A)","note":"primary vs secondary 条件不同，保留两条边并标 conflict"}
 ```
 
-> **为何不合并**：两篇只共享方法名"Model M"，没有同一样品编号、同一模型 checkpoint 或同一数据集版本的双侧 paragraph_id 证据，`merge_basis` 不足以合并；故建 `same_concept` 边（注明"概念同名，非同一实例"），而非把 E7 并入 E1。
+> **为何不合并**：现有双侧引文只分别证明两篇都出现"Model M"，没有同一样品编号、同一模型 checkpoint 或同一数据集版本证据，`merge_basis` 不足以合并；故建 `same_concept` 边并注明“同名概念，未证实同一物理实例”，而非把 E7 并入 E1。这里既没有证实同一实例，也没有证明它们必然不同或“无共同 checkpoint”。

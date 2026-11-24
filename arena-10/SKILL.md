@@ -27,7 +27,8 @@ description: >-
 ### 第 0 步：读输入，定输出契约
 1. 读 `/input/case.json`：取 `case_id`、`output_contract` 字段、论文材料路径、任务范围。
 2. 读 `/input/task.md`：确认范围（单篇 / 多篇、指定主题）。
-3. 记录 `case_id`。`result.json` 必须含 `case_id` 与全部 output_contract 字段。
+3. 记录 `case_id`。最终结果必须写 `/app/output/result.json`，含 `case_id` 与全部 output_contract 字段。
+4. **立即写开工骨架**：先枚举 output_contract，将全部动态字段按声明类型以空字符串、空数组、空对象或 `null` 占位，不得只保留固定字段。默认结构为 `case_id`、`status:"in_progress"`、`status_reason:"处理中"`、`sources:[]`、`nodes:[]`、`edges:[]`、`queries:[]`、`uncertainties:[]`、`tool_commands:[]`、`provenance:[]`；动态字段与默认字段同名时以 output_contract 类型为准。开工即写入 `/app/output/result.json`。
 
 ### 第 1 步：读 corpus manifest 与两篇 JATS，登记来源
 1. 读 `corpus-manifest.json`：为每篇论文登记独立 `source_id`（取自 manifest 的论文标识）、`jats_file`、`doi`、`title`、`authors`，写入输出顶层 `sources`。
@@ -56,6 +57,8 @@ description: >-
 ### 第 5 步：来源绑定（回得去）
 按 references/source-binding.md，为每个节点、每条边绑定四元组锚点：
 - `source_id`（manifest 论文标识）+ `paragraph_id`（组织方 JATS 段落 ID）+ `quote`（≤30 字原文短引）+ `strength`（strong/medium/weak）。
+- **边的 `evidence` 统一为数组**，可含一个或多个四元组；节点的 `evidence` 可保留单对象，查询的 `evidence` 保持数组。
+- 跨篇边必须有双侧证据：`same_concept` 同时列 primary 与 secondary 的四元组 quote，`condition` 写“同名概念，未证实同一物理实例”。不能由单侧引文推断“无共同 checkpoint”或两篇独立训练。
 - 旧式 `§x ¶y` 仅作可选 human-readable `note`，不作锚点依据。
 
 ### 第 6 步：图谱查询与导出（查得到）
@@ -79,8 +82,8 @@ description: >-
 
 ## 检查点与降级
 
-- **骨架先落盘**：开工即写 result.json 骨架（`case_id`/`status`/`sources`/空 `nodes`/`edges`），随时可交。
-- **分源增量**：每处理完一篇论文立即增量写入该篇 nodes/edges，再进下一篇。
+- **骨架先落盘**：按第 0 步写 `/app/output/result.json`（`case_id`/`status=in_progress`/`status_reason`、全部动态 output_contract 字段空占位及 sources/nodes/edges/queries/uncertainties 等默认结构），随时可交。
+- **分源增量**：每处理完一篇论文立即增量写入该篇 sources/nodes/edges，再进下一篇；查询和 uncertainties 同步更新。
 - **预算过半未完成** → 按 `sources → nodes → edges → 查询` 降级：先保 sources 完整，其次节点，再次边。
 - 查询最少 3 个；不足时只交付真实执行过的查询并如实说明数量。
 - `partial` 时写明已完成范围与缺口，不补造。

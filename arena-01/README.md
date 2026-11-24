@@ -11,9 +11,10 @@
 
 ```
 SKILL.md                              # 主 Skill（入口，六步流程）
-scripts/check_terminology.py          # 术语回填/漂移/frozen 机械核验（纯标准库，有 error 退出码 1）
-scripts/check_conservation.py         # 数字/引用/带单位量守恒逐段核验（纯标准库，missing 退出码 1）
-references/terminology-lock.md        # 术语抽取、锁定与冲突处理（含 terminology.json 机读格式）
+scripts/check_terminology.py          # aliases 回填、context 消歧、漂移/frozen 核验（error 退出 1）
+scripts/check_conservation.py         # 数字/引用/单位量守恒（missing 或 added 均退出 1）
+references/terminology-lock.md        # 术语抽取、term+aliases、context 冲突处理与机读格式
+references/terminology.schema.json    # terminology.json 的 JSON Schema
 references/hedge-strength.md          # 限定词强度分级与守恒（关系准核心）
 references/bilingual-alignment.md     # 段落级双语对照与段号约定
 references/translation-verification.md# 译文核验清单

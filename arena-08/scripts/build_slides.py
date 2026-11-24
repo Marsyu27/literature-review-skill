@@ -20,7 +20,8 @@
 每张幻灯片的备注（notes）写入:
     "证据: page=N"  以及 讲稿要点（该单元的一句话概括 + 来源定位）。
 
-渲染: 需要系统里有 LibreOffice (soffice)，否则给出明确提示而不报错中断。
+渲染: 实际探测 soffice 或 libreoffice 并调用同一路径；不可用或 OSError 时明确
+跳过而不中断。--render 使用 PPTX 同名 PDF；--render-pdf 的移动后路径必须生效。
 """
 import json
 import os
@@ -381,16 +382,31 @@ def _wrap(text, width):
 
 
 def render_pdf(pptx_path, pdf_path):
-    if not shutil.which("soffice") and not shutil.which("libreoffice"):
+    office = shutil.which("soffice") or shutil.which("libreoffice")
+    if not office:
         print("[render] 未找到 soffice/libreoffice，跳过 PDF 渲染（保留 PPTX）")
         return False
-    cmd = ["soffice", "--headless", "--convert-to", "pdf", "--outdir",
-           os.path.dirname(os.path.abspath(pdf_path)), pptx_path]
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
-    if r.returncode != 0:
-        print(f"[render] 渲染失败: {r.stderr[:400]}")
+    pdf_path = os.path.abspath(pdf_path)
+    out_dir = os.path.dirname(pdf_path)
+    converted = os.path.join(
+        out_dir, os.path.splitext(os.path.basename(pptx_path))[0] + ".pdf")
+    cmd = [office, "--headless", "--convert-to", "pdf", "--outdir",
+           out_dir, pptx_path]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+        if r.returncode != 0:
+            print(f"[render] 渲染失败: {r.stderr[:400]}")
+            return False
+        if not os.path.isfile(converted):
+            print(f"[render] 渲染失败：Office 未生成预期文件 {converted}")
+            return False
+        # LibreOffice 按 PPTX 文件名命名；显式 --render-pdf 路径必须最终生效。
+        if os.path.abspath(converted) != pdf_path:
+            shutil.move(converted, pdf_path)
+    except OSError as exc:
+        print(f"[render] Office/文件调用失败，跳过 PDF 渲染（保留 PPTX）: {exc}")
         return False
-    print(f"[render] 已生成 PDF: {os.path.dirname(os.path.abspath(pdf_path))}")
+    print(f"[render] 已生成 PDF: {pdf_path}")
     return True
 
 
@@ -409,7 +425,13 @@ def main():
         build_minimal_pptx(data, out)
         print(f"[build_slides] 使用最小 OOXML 生成: {out}")
     if "--render" in sys.argv or "--render-pdf" in sys.argv:
-        pdf = out.rsplit(".", 1)[0] + ".pdf"
+        pdf = os.path.splitext(out)[0] + ".pdf"
+        if "--render-pdf" in sys.argv:
+            index = sys.argv.index("--render-pdf")
+            if index + 1 >= len(sys.argv):
+                print("build_slides: --render-pdf 需要输出 PDF 路径", file=sys.stderr)
+                return 2
+            pdf = sys.argv[index + 1]
         render_pdf(out, pdf)
     return 0
 

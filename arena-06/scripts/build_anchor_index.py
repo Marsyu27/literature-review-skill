@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""build_anchor_index.py — 为论文文本/Markdown 生成稳定锚点索引（纯标准库）。
+"""build_anchor_index.py — 为论文文本/Markdown/PDF 生成稳定锚点索引。
 
 按标题行切分章节并赋稳定 ID（§1..§n），章节内按空行切段落赋 ¶1..¶m。
 标题行识别规则（按优先级）：
@@ -16,10 +16,16 @@
 
 用法：
   python3 scripts/build_anchor_index.py --input paper.md --out anchor_index.json
+  python3 scripts/build_anchor_index.py --input /input/paper.pdf --out anchor_index.json
+
+PDF 输入通过可选系统依赖 `pdftotext -layout` 转为文本；普通文本/Markdown
+仍直接按 UTF-8 读取，不依赖外部命令。pdftotext 不可用或转换失败时清晰报错并非零退出。
 """
 import argparse
 import json
 import re
+import shutil
+import subprocess
 import sys
 
 MD_HEADING = re.compile(r"^#{1,6}\s+(.+?)\s*#*\s*$")
@@ -103,25 +109,84 @@ def build_index(text):
     return {"source": None, "sections": sections}
 
 
+def decode_output(data):
+    """解码子进程文本；不把二进制 PDF 或编解码异常抛给调用方。"""
+    return data.decode("utf-8", errors="replace")
+
+
+def read_pdf_with_pdftotext(path):
+    executable = shutil.which("pdftotext")
+    if executable is None:
+        print(
+            "[build_anchor_index] 检测到 PDF，但系统未安装或找不到 pdftotext。"
+            "请安装 Poppler（提供 pdftotext），或先用 `pdftotext -layout paper.pdf paper.txt` "
+            "转换后以文本/Markdown 作为 --input。",
+            file=sys.stderr,
+        )
+        return None, 2
+    try:
+        proc = subprocess.run(
+            [executable, "-layout", path, "-"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+    except OSError as exc:
+        print(
+            f"[build_anchor_index] 无法执行 pdftotext: {exc}。"
+            "请改为先手动转换 PDF，再输入文本/Markdown。",
+            file=sys.stderr,
+        )
+        return None, 2
+    if proc.returncode != 0:
+        detail = decode_output(proc.stderr).strip()
+        print(
+            f"[build_anchor_index] pdftotext -layout 转换失败（退出码 {proc.returncode}）"
+            f"：{detail or '未提供错误详情'}。请修复 PDF，或手动转换后输入文本/Markdown。",
+            file=sys.stderr,
+        )
+        return None, 2
+    return decode_output(proc.stdout), 0
+
+
 def main():
     ap = argparse.ArgumentParser(description="生成论文锚点索引 anchor_index.json")
-    ap.add_argument("--input", required=True, help="论文文本/Markdown 文件路径")
+    ap.add_argument("--input", required=True, help="论文文本/Markdown/PDF 文件路径")
     ap.add_argument("--out", required=True, help="输出 anchor_index.json 路径")
     args = ap.parse_args()
-    try:
-        with open(args.input, "r", encoding="utf-8") as f:
-            text = f.read()
-    except OSError as e:
-        print(f"[build_anchor_index] 无法读取输入: {e}", file=sys.stderr)
-        return 2
+
+    is_pdf = args.input.lower().endswith(".pdf")
+    if is_pdf:
+        text, code = read_pdf_with_pdftotext(args.input)
+        if code:
+            return code
+    else:
+        try:
+            with open(args.input, "r", encoding="utf-8") as f:
+                text = f.read()
+        except OSError as e:
+            print(f"[build_anchor_index] 无法读取输入: {e}", file=sys.stderr)
+            return 2
+        except UnicodeError as e:
+            print(
+                f"[build_anchor_index] 文本不是有效 UTF-8，无法读取: {e}。"
+                "请转为 UTF-8 文本；PDF 请使用 .pdf 后缀。",
+                file=sys.stderr,
+            )
+            return 2
     index = build_index(text)
     index["source"] = args.input
-    with open(args.out, "w", encoding="utf-8") as f:
-        json.dump(index, f, ensure_ascii=False, indent=2)
-        f.write("\n")
+    try:
+        with open(args.out, "w", encoding="utf-8") as f:
+            json.dump(index, f, ensure_ascii=False, indent=2)
+            f.write("\n")
+    except OSError as e:
+        print(f"[build_anchor_index] 无法写入输出: {e}", file=sys.stderr)
+        return 2
     nsec = len(index["sections"])
     npar = sum(len(s["paragraphs"]) for s in index["sections"])
-    print(f"[build_anchor_index] {args.input} -> {args.out}: {nsec} 节, {npar} 段")
+    source_kind = "PDF（pdftotext -layout）" if is_pdf else "文本/Markdown"
+    print(f"[build_anchor_index] {args.input} -> {args.out}: {nsec} 节, {npar} 段；来源={source_kind}")
     for s in index["sections"]:
         print(f"  {s['id']} {s['title']!r} (start_line={s['start_line']}, {len(s['paragraphs'])} 段)")
     return 0

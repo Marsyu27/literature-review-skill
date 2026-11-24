@@ -15,6 +15,7 @@ REQUIRED = [
     "scripts/check_terminology.py",
     "scripts/check_conservation.py",
     "references/terminology-lock.md",
+    "references/terminology.schema.json",
     "references/hedge-strength.md",
     "references/bilingual-alignment.md",
     "references/translation-verification.md",

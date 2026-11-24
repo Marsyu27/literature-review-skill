@@ -48,18 +48,26 @@ description: >-
 ### 第 4 步：关系类型受控词表（读得懂 + 对得上）
 谓词（predicate）从 references/relation-vocabulary.md 的**受控词表**取值，不自由发挥；主体/客体方向必须准确（谁作用于谁）。
 
-### 第 5 步：质量检查（拆得细 + 对得上）
-按 references/quality-check.md 逐条检查：断言过宽、证据不足、关系类型错误、主体混淆、来源缺失、限定词丢失。每条给出**可复现的判定依据**。检查不通过 → 回第 1 步或标 `uncertain`。导出前运行 `python scripts/validate_nanopub.py /app/output/result.json` 做机检（谓词词表、三字段齐全、JSON-LD @context），退出码非 0 时按错误清单修正后复检。
+### 第 5 步：导出前记录质检（拆得细 + 对得上）
+按 references/quality-check.md 逐条检查：断言过宽、证据不足、关系类型错误、主体混淆、来源缺失、限定词丢失。每条给出**可复现的判定依据**。检查不通过 → 回第 1 步或标 `uncertain`。JSON-LD 导出前运行：
+```
+python scripts/validate_nanopub.py --records-only /app/output/result.json
+```
+此步只机检谓词词表、三字段与 evidence 状态规则，**不代表 JSON-LD 已通过**。`status=unverified` 的空 evidence 会留下可解释 warning，其他状态的空 evidence 是 error。
 
-### 第 6 步：结构化导出（读得懂）
-写 `/app/output/result.json`（见 references/output-schema.md），并导出 JSON-LD（含 `@context` 与 `assertion` / `evidence` / `provenance` / `pubinfo` 四个 named graph），字段与序列化形态符合约定，下游程序可直接解析。
+### 第 6 步：JSON-LD 导出 + 最终严格质检（读得懂）
+写 `/app/output/result.json`（见 references/output-schema.md），并导出 JSON-LD（含 `@context`、`urn:nanopub:<case_id>:<n>` 顶层 `@id` 与 `assertion` / `evidence` / `provenance` / `pubinfo` 四个 named graph），字段与序列化形态符合约定，下游程序可直接解析。导出后必须再次运行最终严格质检：
+```
+python scripts/validate_nanopub.py /app/output/result.json [extra.jsonld ...]
+```
+完全没有 JSON-LD、缺 `@context`、缺任一 named graph 或 URN `@id` 形态不符均为 error，退出码非 0；修正后复检通过才可交付。
 
 ## 检查点与降级
 
 - 第 0 步读完输入即把 `result.json` 骨架（`case_id` + `status: "in_progress"` + output_contract 全部字段的空值）写入 `/app/output/result.json`，之后每阶段就地更新。
 - 断言逐批**增量落盘**：每完成一批（如一个章节/段落组）即把该批 nanopublications 追加写入结果或增量文件（如 `/app/output/nanopubs-part-N.json`），最终合并。
 - 预算（请求数/时间）过半仍未完成时按顺序降级：**证据绑定 → 断言 → provenance → JSON-LD**，靠后项可放弃。
-- 未完成部分标 `status: "partial"`，在 `status_reason` 写明已覆盖的段落范围与中断位置，不伪造已完成。
+- 未完成部分标 `status: "partial"`，在 `status_reason` 写明已覆盖的段落范围、中断位置和全部缺口，不伪造已完成。partial 若已有输出，仍须满足已声明字段的输出契约并运行最终严格质检；缺少 JSON-LD 就是最终 error，不能用导出前记录质检的 warning 或跳过说明掩盖。确实无法导出时不得声称 JSON-LD 已完成，须在 `status_reason`/`uncertainties` 明列该缺口。
 
 ## 异常与边界
 
@@ -84,5 +92,5 @@ description: >-
 - `references/provenance-metadata.md` —— 来源元数据与溯源链
 - `references/quality-check.md` —— 质量检查清单
 - `references/output-schema.md` —— result.json / JSON-LD 字段契约
-- `scripts/validate_nanopub.py` —— 结果机检脚本（词表/字段/@context 校验）
+- `scripts/validate_nanopub.py` —— 导出前记录质检与最终 JSON-LD 严格质检（词表/字段/@context/四类 named graph/URN @id）
 - `examples/nanopub-examples.md` —— 标注为示例的断言样例（非正式案例）

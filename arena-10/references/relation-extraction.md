@@ -15,7 +15,7 @@
 | `evaluated_by` | 由…评价 | 任务/方法 → 指标 |
 | `achieved` | 达到（数值） | 方法 → 指标值 |
 | `applied_to` | 应用于 | 方法 → 任务 |
-| `same_concept` | 跨篇概念同名（**非同一实例**，不合并） | A ↔ B（跨 source_id） |
+| `same_concept` | 跨篇同名概念（**未证实同一物理实例**，不合并） | A ↔ B（跨 source_id） |
 
 ## 规则
 
@@ -26,13 +26,13 @@
    - 相关（associated with）不写成因果（causes）。
 4. **适用条件保留**：`under X`、`in vitro`、`n=3` 作为边的 `condition`。
 5. **证据强度**：直接陈述 `strong`；间接推断 `medium`；转述/共现 `weak`。
-6. **跨篇边**：跨 `source_id` 的同名词条只用 `same_concept` 连接并注明"概念同名，非同一实例"，不据此合并节点。
+6. **跨篇边**：跨 `source_id` 的同名词条只用 `same_concept` 连接，`condition` 注明“同名概念，未证实同一物理实例”，不据此合并节点。`evidence` 必须是同时含两篇四元组 quote 的数组；单侧引文不能证明两侧同名，更不能推断实例关系或训练历史。
 
 ## 样例（示意）
 
 ```json
-{"source":"E1","predicate":"outperforms","target":"E3","condition":"on dataset D, p<0.05","evidence_strength":"strong"}
-{"source":"E2","predicate":"evaluated_by","target":"E5","evidence_strength":"strong"}
+{"edge_id":"R1","source":"E1","predicate":"outperforms","target":"E3","condition":"on dataset D, p<0.05","evidence":[{"source_id":"primary","paragraph_id":"pri-p-0031","quote":"Model M achieves 0.81 vs 0.79","strength":"strong"}]}
+{"edge_id":"R2","source":"E2","predicate":"evaluated_by","target":"E5","condition":"on dataset D","evidence":[{"source_id":"primary","paragraph_id":"pri-p-0030","quote":"We evaluate Model M using accuracy","strength":"strong"}]}
 ```
 
 > 原文若只说"与基线比较"而未说更优，用 `compares` 而非 `outperforms`。

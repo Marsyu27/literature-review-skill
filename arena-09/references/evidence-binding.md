@@ -6,7 +6,7 @@
 
 - `evidence_text` 是真正支撑该断言的最小原文片段，不是整段复制、不是摘要。
 - 判据：删去该片段中的任何一句，证据就不再充分。
-- 证据不足（片段无法支撑断言）→ 标 `unverified`，不硬绑。
+- 证据不足（片段无法支撑断言）→ 标 `unverified`，不硬绑。仅这种状态允许 evidence 为空，最终脚本会留下 warning；必须在 `basis`/`uncertainties` 写明“证据缺失”，其他状态空 evidence 为 error。
 
 ## 直接 vs 间接
 

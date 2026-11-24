@@ -12,7 +12,8 @@
 
 ```
 SKILL.md                              # 主 Skill（入口，YAML frontmatter + 十步流程）
-scripts/parse_pdf.py                  # 版面机械解析：真实坐标/栏判定/阅读顺序/页眉页脚/表格候选（标准库+pdftotext）
+scripts/parse_pdf.py                  # 真实坐标/逐页栏判定/阅读顺序/页眉页脚/表格候选（标准库+pdftotext）
+scripts/parse_ocr_tsv.py              # Tesseract TSV → 词/行 text、bbox、confidence（纯标准库）
 scripts/build_slides.py               # 可编辑 PPTX 生成 + 渲染预览（自包含）
 references/layout-reading-order.md    # 多栏阅读顺序与页眉页脚判定（LLM 语义修正依据）
 references/table-structure.md         # 表格结构重建规则
@@ -28,8 +29,9 @@ src/reproduce.py                      # 自检入口（校验+自测，非评测
 加载 Skill 后，Agent 按 SKILL.md 的十步流程执行：
 
 1. 读 `/input/case.json`（取 `case_id`、`output_contract` 字段、PDF 路径）与 `/input/task.md`。
-2. **机械解析先行**：`python3 scripts/parse_pdf.py --pdf <PDF> --out work/blocks.json`，拿到真实坐标、单/双栏判定、初排阅读顺序、页眉页脚剔除与表格候选；退出码 2 → text-only 降级（坐标 null、order 按文本流、result 标 `mode`）。
-3. LLM 只在 blocks.json 上做语义标注/修正（标题层级、表格语义）→ 结构识别 → 公式 → 页级证据映射 → 输出 result.json（+ 可选 PPTX）。
+2. **机械解析先行**：`python3 scripts/parse_pdf.py --pdf <PDF> --out work/blocks.json`，拿到真实坐标、`page_layouts` 逐页单/双栏与栏界（混合文档顶层 `columns:"mixed"`）、逐页初排阅读顺序、页眉页脚剔除与表格候选；未识别的页眉页脚带内词会重新分列、重新成行。退出码 2 → text-only 降级（坐标 null、order 按文本流、result 标 `mode`）。
+3. OCR 使用 `tesseract <page>.png <out> tsv`（如需语言模型，在命令中加 `-l <lang>`），再以 `python3 scripts/parse_ocr_tsv.py --tsv <out>.tsv --out <out>.json` 获得词/行 text、bbox、confidence。普通文本输出不得伪造区域置信度。
+4. LLM 只在 blocks.json 上做语义标注/修正（标题层级、表格语义）→ 结构识别 → 公式 → 页级证据映射 → 输出 result.json（+ 可选 PPTX）。
 
 ## 输出契约
 
@@ -37,10 +39,10 @@ src/reproduce.py                      # 自检入口（校验+自测，非评测
 
 ## 依赖（三档诚实声明）
 
-- **Python 无第三方依赖**：`scripts/parse_pdf.py` 仅用标准库（subprocess 调系统工具）；`scripts/build_slides.py` 优先用 `python-pptx`（可选），未安装时自动回退到仅标准库的最小 OOXML 生成器。
+- **Python 无第三方依赖**：`scripts/parse_pdf.py` 与 `scripts/parse_ocr_tsv.py` 仅用标准库；`scripts/build_slides.py` 优先用 `python-pptx`（可选），未安装时自动回退到仅标准库的最小 OOXML 生成器。
 - **poppler-utils（pdftotext）**：版面模式必需；缺失时 parse_pdf.py 退出码 2，降级 text-only（坐标 null、order 按文本流、result 标 `mode:"text-only"`）。
-- **tesseract**（可选）：扫描件 OCR；缺失时扫描页标 `image_only`。
-- **soffice**（可选）：PPTX 渲染 PDF/PNG 预览；缺失时跳过预览并在 result 注明。
+- **tesseract**（可选）：以 TSV 配置执行扫描件 OCR，保留真实词/行区域置信度；缺失时扫描页标 `image_only`，不得伪造 confidence。
+- **soffice 或 libreoffice**（可选）：PPTX 渲染 PDF 预览；脚本统一调用实际探测路径，缺失或系统调用失败时跳过预览并在 result 注明。`--render` 生成 PPTX 同名 PDF；`--render-pdf <out.pdf>` 将转换结果移到确切指定路径。
 
 ## 异常处理与限制
 

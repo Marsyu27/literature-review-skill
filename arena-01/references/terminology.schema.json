@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "terminology.schema.json",
+  "title": "Scientific translation terminology lock",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["term", "locked"],
+    "properties": {
+      "term": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Canonical source-language surface form"
+      },
+      "aliases": {
+        "type": "array",
+        "items": {"type": "string"},
+        "default": [],
+        "description": "Synonymous source surface forms; any one activates this lock"
+      },
+      "locked": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Required translation for an activated entry"
+      },
+      "context": {
+        "description": "Regex string or OR-list of regexes matched against each source segment; required on every entry sharing a polysemous surface",
+        "oneOf": [
+          {"type": "string", "minLength": 1},
+          {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1},
+            "minItems": 1
+          }
+        ]
+      },
+      "alternates": {
+        "type": "array",
+        "items": {"type": "string"},
+        "default": []
+      },
+      "frozen": {"type": "boolean", "default": false},
+      "translation": {"type": "string"},
+      "first_at": {"type": "string"},
+      "unified": {"type": "boolean"},
+      "note": {"type": "string"}
+    },
+    "additionalProperties": true
+  }
+}

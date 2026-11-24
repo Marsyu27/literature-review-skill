@@ -13,7 +13,7 @@
 - 缩写/大小写/连字符归一**仅限篇内**，不外推到另一篇。
 - **跨篇同名词条默认拆分**为不同节点，各自挂各自 `source_id` 的证据。
 - **跨篇合并且仅当同一物理实例**：两篇明确指向同一样品编号 / 同一模型 checkpoint / 同一数据集版本。
-- 合并时 `merge_basis` 必须写明**双方 paragraph_id 双侧证据**；只有概念同名而无双侧实例证据 → 不合并，建 `same_concept` 边并注明"概念同名，非同一实例"。
+- 合并时 `merge_basis` 必须写明**双方 paragraph_id 双侧证据**；只有概念同名而无双侧实例证据 → 不合并，可建 `same_concept` 边，`condition` 写"同名概念，未证实同一物理实例"，且 `evidence` 数组同时包含两篇原文四元组 quote。单侧引文只能证明该方法名在本篇出现，不能推断两篇独立提出/训练或“无共同 checkpoint”。
 - 相同通用方法/材料术语不代表两篇使用了相同物理样品、模型实例、数据集或实验条件。
 
 ## 同名冲突（homonym）
@@ -29,5 +29,5 @@
 
 ```json
 {"entity_id":"E1","label":"stochastic gradient descent","aliases":["SGD","随机梯度下降"],"source_id":"primary","merge_basis":"pri-p-0003 首现展开，全篇同指","homonym":false}
-{"entity_id":"E9","label":"Model A","aliases":["A"],"source_id":"secondary","homonym":true,"note":"与 primary 的 Model A 同名不同物，来自不同文献"}
+{"entity_id":"E9","label":"Model A","aliases":["A"],"source_id":"secondary","homonym":false,"status":"uncertain","note":"与 primary 的 Model A 仅确认同名；是否同一物理实例待双侧证据确认"}
 ```

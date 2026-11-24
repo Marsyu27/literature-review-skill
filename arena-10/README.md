@@ -27,7 +27,7 @@ src/reproduce.py                    # 自检入口
 
 ## 输出契约
 
-`/app/output/result.json` 必含：`case_id`、`status`、`status_reason`、output_contract 字段、`nodes[]`、`edges[]`、`queries[]`（≥3）、`uncertainties`。
+结果明确写 `/app/output/result.json`，必含：`case_id`、`status`、`status_reason`、全部 output_contract 动态字段、`sources[]`、`nodes[]`、`edges[]`、`queries[]`（≥3）、`uncertainties`。节点 evidence 可为单个四元组对象；边与查询 evidence 均为数组，跨篇 same_concept 必须有双侧原文证据。
 
 ## 依赖
 

@@ -1,9 +1,12 @@
 # Python：无第三方依赖。
 #   scripts/parse_pdf.py 仅用标准库（subprocess 调系统工具）；
+#   scripts/parse_ocr_tsv.py 仅用标准库（解析 Tesseract TSV，不调用 OCR 模型）；
 #   scripts/build_slides.py 优先用 python-pptx（可选），未安装时自动回退到仅标准库的最小 OOXML 生成器。
 #
 # 系统工具（按档位如实声明）：
 #   poppler-utils（pdftotext）—— 版面模式必需；缺失时 parse_pdf.py 退出码 2，
 #       降级为 text-only 模式（坐标字段 null、order 按文本流、result 标注 mode）。
-#   tesseract —— 可选，扫描件 OCR；缺失时扫描页标 image_only。
-#   soffice（LibreOffice）—— 可选，PPTX 渲染 PDF/PNG 预览；缺失时跳过预览并在 result 注明。
+#   tesseract —— 可选，以 tsv 配置执行扫描件 OCR，经 parse_ocr_tsv.py 保留区域置信度；
+#       缺失时扫描页标 image_only，不伪造 confidence。
+#   soffice 或 libreoffice（LibreOffice）—— 可选，PPTX 渲染 PDF 预览；
+#       实际探测并统一调用；缺失/系统调用失败时跳过预览并在 result 注明。

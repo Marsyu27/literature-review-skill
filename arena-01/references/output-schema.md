@@ -22,7 +22,8 @@
   "source_lang": "en",
   "target_lang": "zh",
   "terminology": [
-    {"term": "…", "translation": "…", "first_at": "§1 ¶1", "unified": true, "note": ""}
+    {"term": "performance", "aliases": ["efficiency"], "locked": "效率", "alternates": []},
+    {"term": "bank", "locked": "银行", "context": ["\\b(?:account|finance)s?\\b"]}
   ],
   "segments": [
     {
@@ -44,7 +45,7 @@
 |---|---|---|
 | `case_id` / `status` / `status_reason` | 是 | 运行状态三件套 |
 | `source_lang` / `target_lang` | 是 | 源/目标语言 |
-| `terminology` | 是 | 冻结的术语表 |
+| `terminology` | 是 | 冻结术语表：`term` + 可选 `aliases[]`；同表面形式多义条目各有 `context`；`locked` 为强制译名，`alternates`/`frozen` 原语义不变。正式 schema 见 `terminology.schema.json`，旧式简单 `term/locked/alternates/frozen` 记录兼容 |
 | `segments` | 是 | 段落级双语对照，含段号、原文、译文、依据、状态 —— "可核验"的载体 |
 | `uncertainties` | 是 | 无法判断/需人工确认项；无则空数组 |
 | `tool_commands` | 推荐 | 实际命令，用于复现 |

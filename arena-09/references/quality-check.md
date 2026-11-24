@@ -19,11 +19,15 @@
 
 - 可回第 1 步重拆 → 重拆后复检。
 - 无法确定 → 标 `status=uncertain`，写入 `uncertainties`，不硬写。
-- 证据不足 → 标 `status=unverified`，写"证据缺失"。
+- 证据不足 → 标 `status=unverified`，在 `basis`/`uncertainties` 写"证据缺失"；仅这种状态允许空 evidence，并会产生可解释 warning，其他状态空 evidence 仍是 error。
 
 ## 判定依据格式
 
 每条断言记录 `basis`：写明"为什么这条证据充分/为什么关系方向是 A→B"，供第三方复核。
+
+## 两步机检
+
+先运行 `python scripts/validate_nanopub.py --records-only /app/output/result.json` 做导出前记录质检；再导出 JSON-LD，运行 `python scripts/validate_nanopub.py /app/output/result.json [extra.jsonld ...]` 做最终严格质检。前者不能替代后者；最终完全没有 JSON-LD 必须失败。
 
 ## 样例（示意）
 

@@ -31,7 +31,7 @@ description: >-
 ### 第 1 步：机械解析（真实坐标与初排阅读顺序）
 1. 先探测：`command -v pdftotext`。
 2. 跑 `python3 scripts/parse_pdf.py --pdf <PDF> --out /app/work/blocks.json`：
-   - 退出码 0 → `blocks.json` 已含逐词真实坐标、单/双栏判定（词 xMin 直方图双峰+栏间谷底）、初排阅读顺序（左栏→右栏）、页眉页脚剔除（≥50% 页重复行）、表格候选（`kind=table_candidate`，附 TSV 行与单元格 bbox）。**后续一切结构工作以它为底稿。**
+   - 退出码 0 → `blocks.json` 已含逐词真实坐标、**逐页**单/双栏判定（词 xMin 直方图双峰+栏间谷底）与 `page_layouts`（每页 `n_cols/column_boundary/order`），混合版式顶层为 `columns:"mixed"`；初排阅读顺序逐页按左栏→右栏、单栏自上而下。页眉页脚剔除沿用 ≥50% 页重复全宽行；未判为页眉页脚的带内词会按当页栏界重新分列、重新成行，不会把左右栏整行注入正文。表格候选为 `kind=table_candidate`，附 TSV 行与单元格 bbox。**后续一切结构工作以它为底稿。**
    - 退出码 2 → pdftotext 缺失或执行失败，进入 **text-only 降级**：仅用可行手段提取纯文本，坐标字段一律 `null`，`order` 按文本流，result 标注 `mode:"text-only"` 并把降级写入 `uncertainties`。
 3. 体检结论（页数、加密、有无文字层）记录进 `tool_commands`；加密 PDF 报 `status=unable`，不尝试破解；无文字层 → 走第 7 步 OCR，`tesseract` 缺失则该页标 `image_only`。
 
@@ -65,20 +65,21 @@ description: >-
 ### 第 7 步：扫描版 OCR（提得全的兜底）
 - 无文字层或文字层质量差：用 `tesseract` 识别；`tesseract` 缺失 → 该页标 `image_only` 并写入 `uncertainties`，不猜内容。
 - 预处理（放大/二值化去噪）只用环境中**实际存在**的工具（先 `command -v` 探测）；OCR 后做**后处理校验**（常见错字对照）。
-- 低置信度区域明确标注。流程见 references/ocr-fallback.md。
+- 必须让 Tesseract 产出 TSV 以保留区域证据：`tesseract <page>.png <out> tsv`（如需语言模型，在命令中加 `-l <lang>`），再运行 `python3 scripts/parse_ocr_tsv.py --tsv <out>.tsv --out <out>.json`。解析器过滤空文本，输出词级/行级 `text/bbox/confidence`；confidence 保留 0–100，行值按词框面积加权，未知为 `null`。
+- 低置信度区域明确标注。**禁止把普通文本输出伪造成区域置信度，禁止编造 confidence。**流程见 references/ocr-fallback.md。
 
 ### 第 8 步：页级证据映射（核得回）
 每个结构化单元（段落、标题、表格、公式、图注）记录：
 - `page`（页码，从 1 起）
 - `bbox`（区块坐标，若有）
-- `confidence`（文字层 1.0；OCR 按置信度）
+- `confidence`（文字层 1.0；OCR 保留 TSV 的 0–100 标度并注明 `confidence_scale`，未知为 `null`）
 - `source`（如 `page=3, top-left column`）
 
 这是本 Skill 的硬性要求：**关键结论可复核，读不出/不确定的地方如实标注**。
 
 ### 第 9 步：组织输出（结构化 + 可选幻灯片）
 1. **主产物**：结构化 JSON（第 10 步的 result.json）+ 一份 Markdown/HTML 全文解析稿。
-2. **可选产物**：把解析结果组织成**可编辑学术 PPTX**——每个结构单元（标题页/章节/表格/公式/图注/参考文献）对应一张幻灯片，备注里写入**页级证据映射**（页码+区块）与**讲稿要点**；再用 `soffice --headless --convert-to pdf`（如可用）生成 PDF/PNG 预览，**soffice 缺失则跳过预览并在 result 注明**。
+2. **可选产物**：把解析结果组织成**可编辑学术 PPTX**——每个结构单元（标题页/章节/表格/公式/图注/参考文献）对应一张幻灯片，备注里写入**页级证据映射**（页码+区块）与**讲稿要点**；脚本实际探测 `soffice` 或 `libreoffice` 并统一调用探测到的路径生成 PDF 预览。两者都不可用或系统调用失败则诚实跳过并在 result 注明；`--render-pdf <路径>` 指定最终 PDF 路径，`--render` 使用 PPTX 同名 `.pdf`。
    - 生成脚本：`scripts/build_slides.py`（自包含，见其头部用法说明）。
    - 说明：PPT 是"结构化结果的可编辑组织形态"，**不是替代**结构化 JSON/Markdown；评分以解析质量为重。
 
@@ -97,8 +98,8 @@ description: >-
 | 工具 | 档位 | 缺失时的处置 |
 |---|---|---|
 | `pdftotext`（poppler-utils） | **版面模式必需**（scripts/parse_pdf.py 的唯一外部依赖） | 降级 text-only：坐标字段 `null`、`order` 按文本流、result 标注 `mode:"text-only"` |
-| `tesseract` | 可选（扫描件 OCR） | 扫描页标 `image_only`，写入 `uncertainties`，不猜内容 |
-| `soffice`（LibreOffice） | 可选（PPTX 渲染 PDF/PNG 预览） | 跳过预览，result 注明"预览缺失：soffice 不可用" |
+| `tesseract`（TSV 输出） | 可选（扫描件 OCR 与区域置信度） | 扫描页标 `image_only`，写入 `uncertainties`，不猜内容/confidence |
+| `soffice` 或 `libreoffice`（LibreOffice） | 可选（PPTX 渲染 PDF 预览） | 跳过预览，result 注明实际不可用/失败原因；不声称已有预览 |
 
 实际执行的命令写进 `tool_commands`；禁止编造工具输出，禁止声称工具具备其没有的能力。
 
@@ -127,7 +128,8 @@ description: >-
 - 每次运行输出保留 `case_id` 与工具命令记录，便于复现与审计。
 
 详见随附资源：
-- `scripts/parse_pdf.py` —— 版面机械解析：真实坐标、栏判定、阅读顺序、页眉页脚剔除、表格候选（标准库 + pdftotext）
+- `scripts/parse_pdf.py` —— 版面机械解析：真实坐标、逐页栏判定、阅读顺序、页眉页脚剔除、表格候选（标准库 + pdftotext）
+- `scripts/parse_ocr_tsv.py` —— Tesseract TSV 的词/行文本、bbox 与真实置信度解析（纯标准库）
 - `references/layout-reading-order.md` —— 多栏阅读顺序与页眉页脚判定
 - `references/table-structure.md` —— 表格结构重建规则
 - `references/formula-preservation.md` —— 公式/特殊字符保真

@@ -40,6 +40,12 @@
   },
 
   "mode": "layout | text-only",
+  "columns": "single | double | mixed",
+  "column_boundary": 306.8,
+  "page_layouts": [
+    {"page": 1, "columns": "single", "column_boundary": null, "n_cols": 1, "order": "top-to-bottom"},
+    {"page": 2, "columns": "double", "column_boundary": 307.8, "n_cols": 2, "order": "left-to-right"}
+  ],
 
   "blocks": [
     {
@@ -72,14 +78,22 @@
     {"type": "header", "text": "Journal Name", "pages": [1,2,3]}
   ],
 
+  "ocr": {
+    "mode": "ocr-tsv",
+    "confidence_scale": "tesseract-0-100",
+    "words": [{"page": 1, "block": 1, "paragraph": 1, "line": 1, "word": 1, "text": "Alpha", "bbox": [10,20,20,30], "confidence": 90.0}],
+    "lines": [{"page": 1, "block": 1, "paragraph": 1, "line": 1, "text": "Alpha beta", "bbox": [10,20,60,32], "confidence": 67.5}]
+  },
+
   "uncertainties": [
     "页 4 表格为图片，OCR 低置信度",
     "页 7 公式 (8) 上下标无法确定"
   ],
 
   "tool_commands": [
-    "pdftotext -layout paper.pdf out.txt",
-    "pdftoppm -png -r 150 paper.pdf page"
+    "python3 scripts/parse_pdf.py --pdf paper.pdf --out blocks.json",
+    "tesseract page-1.png page-1 tsv",
+    "python3 scripts/parse_ocr_tsv.py --tsv page-1.tsv --out page-1.json"
   ]
 }
 ```
@@ -90,10 +104,13 @@
 |---|---|---|
 | `case_id` / `status` / `status_reason` | 是 | 运行状态三件套 |
 | `mode` | 是 | `layout`（parse_pdf.py 版面模式，有真实坐标）或 `text-only`（pdftotext 缺失的降级：bbox 一律 null、order 按文本流） |
+| `columns` / `column_boundary` | layout 时保留 | 顶层兼容汇总字段；各页版式不同时 `columns="mixed"`、`column_boundary=null`，不得拿汇总栏界代替逐页栏界 |
+| `page_layouts` | layout 时保留 | 逐页 `page/columns/column_boundary/n_cols/order`；双页混合版式可有不同 `n_cols`，块阅读顺序使用所属页配置 |
 | `document` | 是 | 整篇结构：标题、作者、摘要、章节树、参考文献 |
-| `blocks` | 是 | 全量结构单元流，含 `page`/`bbox`/`order`/`confidence` —— 这是"核得回"的载体。`kind` 由 parse_pdf.py 机械产出（body/header/footer/table_candidate），`type` 由 LLM 在 blocks.json 上语义标注补充 |
+| `blocks` | 是 | 全量结构单元流，含 `page`/`bbox`/`order`/`confidence` —— 这是"核得回"的载体。`kind` 由 parse_pdf.py 机械产出（body/header/footer/table_candidate），`type` 由 LLM 在 blocks.json 上语义标注补充；正文 `column` 必须属于该块所在页的布局 |
 | `tables` / `formulas` / `figures` | 按需 | 从 blocks 中抽取的结构化子集 |
 | `headers_footers` | 是 | 页眉页脚/水印，单独存放不混入正文 |
+| `ocr` | OCR 时按需 | `parse_ocr_tsv.py` 的词级/行级结果；bbox 为像素 `[x0,y0,x1,y1]`，confidence 为 Tesseract 0–100 或 null。行值按词框面积加权；普通文本输出禁止伪造这些字段 |
 | `uncertainties` | 是 | 无法判断/需人工确认项；无则空数组 |
 | `tool_commands` | 推荐 | 实际执行的工具命令，用于复现与审计 |
 | output_contract 字段 | 是 | 按 case.json 原样回填 |

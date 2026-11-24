@@ -1,6 +1,6 @@
 # 论文卡片字段字典（Paper Card Fields）
 
-统一字段让同一领域的多篇论文可**并排比较**。字段值必须能回链原文（锚点见 source-anchoring.md）。
+统一字段让同一领域的多篇论文可**并排比较**。每个非空字段值必须通过顶层 `paper_card_anchors` 回链原文（见 source-anchoring.md），每项为 `{field,source_anchor,quote?}`，不要把锚点写进字段字符串。
 
 ## 必填字段
 
@@ -36,12 +36,23 @@
 
 ```json
 {
-  "title": "A Demonstration Study",
-  "research_question": "某方法是否在 X 条件下优于基线",
-  "data": "数据集 D，n=1000，来源 …",
-  "methods": "模型 M，超参 …，假设 …",
-  "findings": "准确率 0.81 vs 基线 0.79（p<0.05）",
-  "limitations": "仅在 X 条件下验证；样本来自单一中心",
-  "conclusion": "该方法在 X 条件下显著优于基线"
+  "paper_card": {
+    "title": "A Demonstration Study",
+    "research_question": "某方法是否在 X 条件下优于基线",
+    "data": "数据集 D，n=1000，来源 …",
+    "methods": "模型 M，超参 …，假设 …",
+    "findings": "准确率 0.81 vs 基线 0.79（p<0.05）",
+    "limitations": "仅在 X 条件下验证；样本来自单一中心",
+    "conclusion": "该方法在 X 条件下显著优于基线"
+  },
+  "paper_card_anchors": [
+    {"field":"title","source_anchor":"§1 ¶1"},
+    {"field":"research_question","source_anchor":"§1 ¶2"},
+    {"field":"data","source_anchor":"§3 ¶1"},
+    {"field":"methods","source_anchor":"§3 ¶2"},
+    {"field":"findings","source_anchor":"§4 ¶1"},
+    {"field":"limitations","source_anchor":"§5 ¶1"},
+    {"field":"conclusion","source_anchor":"§6 ¶1"}
+  ]
 }
 ```

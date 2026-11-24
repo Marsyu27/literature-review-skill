@@ -31,7 +31,7 @@
 
 ## JSON-LD 导出
 
-每条 nanopublication 对应一个 JSON-LD 文档。**必须含 `@context`**，否则不是可序列化的 RDF。约定：
+每条 nanopublication 对应一个 JSON-LD 文档。**必须含 `@context`、四类 named graph 和合规 URN 顶层 `@id`**；最终严格质检会实际检查这些项目，完全没有 JSON-LD 也直接失败。约定：
 
 - `@context`：schema.org + 自定义 `np` 命名空间（`https://example.org/nanopub-skill/ns#`，承载词表谓词与 nanopub 结构键）。
 - `@id` 规则：`urn:nanopub:<case_id>:<n>`（n 从 1 起按断言序号递增），各 named graph 在其后分别缀 `#assertion` / `#evidence` / `#provenance` / `#pubinfo`。
@@ -102,9 +102,14 @@
 ## 状态与降级
 
 - `success`：所有 output_contract 字段有值，断言可复核。
-- `partial`：部分完成（个别断言证据缺失/冲突）。
+- `partial`：部分完成（个别断言证据缺失/冲突）；已有输出仍须满足字段契约并通过最终严格质检，`status_reason` 与 `uncertainties` 明列覆盖范围及所有缺口，不能用 warning 掩盖缺少 JSON-LD。
 - `unable`：无法处理（材料缺失/加密/无文本层），写明原因，不编造。
 
 ## 诚实原则
 
-数值、单位、限定词逐字保留；证据不足 → `unverified`；原文矛盾 → `conflict` 保留两处原文；关系方向不明 → `uncertain`，不补造。
+数值、单位、限定词逐字保留；证据不足 → `unverified`，此时允许空 evidence，但脚本会给 warning，且必须在 `basis`/`uncertainties` 写明“证据缺失”；其他状态空 evidence 为 error。原文矛盾 → `conflict` 保留两处原文；关系方向不明 → `uncertain`，不补造。
+
+## 两步机检
+
+1. 导出前记录质检：`python scripts/validate_nanopub.py --records-only /app/output/result.json`，不宣称已检查 JSON-LD。
+2. JSON-LD 导出后最终严格质检：`python scripts/validate_nanopub.py /app/output/result.json [extra.jsonld ...]`，无 JSON-LD、缺 `@context`/四类 named graph 或 URN `@id` 形态错误均退出非 0。

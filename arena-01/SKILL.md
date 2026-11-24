@@ -28,7 +28,7 @@ description: >-
 
 ### 第 1 步：术语抽取与冻结（术语稳）
 1. 通读原文，抽取并登记：领域术语、缩写与全称、专有名词、度量单位写法。
-2. 每个术语给出**唯一译名**，写进术语表（见 references/terminology-lock.md）。同一概念多种原文表达（同义/缩写/全称）合并为一行。
+2. 每个术语给出**唯一译名**，写进术语表（见 references/terminology-lock.md 与 terminology.schema.json）。同一概念多种原文表达合并为一行：`term` 写 canonical form，其他表面形式写 `aliases[]`，不得用 `performance / efficiency` 式拼接字符串。不同语义的同名形式分条，并为每条配置可区分的 `context` 正则列表。
 3. 术语表是**冻结**的：后续标题、摘要、正文、图注、结论中，同一术语必须用同一译名；发现漂移即回改。
 4. 原文术语本就混用时，以**多数派**为准，在术语表标注"已按多数统一，原文另有 X"，并把冲突点放进 `uncertainties`。
 
@@ -59,9 +59,9 @@ description: >-
 先把第 1 步术语表落盘为 `terminology.json`、第 3 步双语段落落盘为 `segments.json`（机读格式见 references/terminology-lock.md 与 references/output-schema.md），然后**先跑两个核验脚本**，再人工回核脚本覆盖不了的项：
 
 1. `python3 scripts/check_terminology.py --terms terminology.json --segments segments.json --report work/terminology-report.json`
-   —— 机械检查术语**回填**（source 含术语而 target 缺 locked 译名 → error）、旧译**漂移**（warning）、**frozen** 逐字约束；有 error 退出码 1。
+   —— 机械检查术语**回填**（source 命中 `term` 或任一 alias 而 target 缺 locked 译名 → error）、旧译**漂移**（warning）、**frozen** 逐字约束；同一表面形式的多条目必须各有 `context`，每段只能命中一个语境候选，否则明确配置 error，有 error 退出码 1。
 2. `python3 scripts/check_conservation.py --segments segments.json --report work/conservation-report.json`
-   —— 逐段核对数字（含小数/百分数/千分位）、引用标记（`[n]` 与 `(Author, year)`）、带单位量（如 `300 K`、`2.5 m/s`）是否守恒；missing 非空退出码 1。
+   —— 逐段核对数字（含正负号、Unicode −、小数/百分数/千分位、`10^-3` 指数与 `1e-3` 科学计数）、引用标记（`[n]` 与 `(Author, year)`）、带单位量（如 `300 K`、`2.5 m/s`）是否守恒；**missing 或 added 任一非空都退出码 1**，added 不是备注。
 
 **两个脚本全绿（退出码均为 0）才允许交付；红则修复译文后重跑，直到全绿；确属原文残缺的残余缺口如实写入 `uncertainties` 并说明脚本报告路径。**
 

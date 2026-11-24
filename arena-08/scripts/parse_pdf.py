@@ -8,19 +8,22 @@ LLM 不再手算 bbox XML。
 流程：
   1. 无 pdftotext → 退出码 2，输出 {"error":"pdftotext unavailable","mode":"text-only"}；
   2. pdftotext -bbox-layout 解析 XHTML，抽取逐词 xMin/yMin/xMax/yMax/text；
-  3. 分栏：正文区（剔除页面上下各 8%）按词 xMin 直方图判双峰，并要求词覆盖
-     直方图存在真实栏间谷底（连续空带）→ 双栏，取谷底中心为分界；
+  3. 分栏：每页正文区（剔除页面上下各 8%）独立按词 xMin 直方图判双峰，并要求
+     词覆盖直方图存在真实栏间谷底（连续空带）→ 双栏，取谷底中心为分界；
      阅读顺序 = 先左栏自上而下再右栏；单栏直接自上而下；
-  4. 页眉页脚：规范化文本行在 ≥50%（至少 2 页）页面顶部/底部（各 8% 带）重复出现，
-     且该文本不同时出现在正文区 → 标 header/footer 并从正文流剔除；
-  5. 组块：先按栏分词，词成行（yMin 容差），行成块（垂直间距阈值或行首 x 跳变），
+  4. 页眉页脚：规范化全宽文本行在 ≥50%（至少 2 页）页面顶部/底部（各 8% 带）
+     重复出现，且该文本不同时出现在正文区 → 标 header/footer 并从正文流剔除；
+     未命中的带内词必须按当页栏界重新分列、重新成行，不得注入预先合并的整行；
+  5. 组块：先按当页栏界分词，词成行（yMin 容差），行成块（垂直间距阈值或行首 x 跳变），
      每块给 id/page/column/order/bbox/text/kind（body/header/footer/table_candidate）；
   6. 表格候选：块内 ≥2 行共享 ≥3 个对齐 x 起始列（每列覆盖 ≥60% 行）且对齐列
      覆盖 ≥50% 词 → table_candidate，附 rows（TSV）与单元格 bbox。
 
 输出 blocks.json：
-  {"pages", "mode":"layout", "columns", "column_boundary",
+  {"pages", "mode":"layout", "columns", "column_boundary", "page_layouts": [...],
    "blocks": [...], "headers_footers": [...], "tables": [...]}
+  顶层 columns/column_boundary 为兼容汇总字段；page_layouts 逐页给
+  page/columns/column_boundary/n_cols/order。混合版式的顶层 columns="mixed"。
 
 用法：python3 scripts/parse_pdf.py --pdf paper.pdf --out blocks.json
 退出码：0 成功；2 pdftotext 缺失或执行失败（输出 text-only 降级 JSON）。
@@ -41,7 +44,7 @@ BAND = 0.08            # 页面上下各 8% 为页眉/页脚候选带
 LINE_Y_TOL = 3.0       # 词成行的 yMin 容差（pt）
 BIN_W = 4.0            # xMin 直方图 bin 宽（pt）
 PEAK_MASK = 30.0       # 主峰两侧屏蔽宽度（pt），用于找第二峰
-GUTTER_MIN = 8.0       # 栏间谷底最小宽度（pt）
+GUTTER_MIN = 6.0       # 栏间谷底最小宽度（pt，兼容 LaTeX 默认 10pt columnsep 的离散化）
 CELL_X_TOL = 6.0       # 表格对齐列的 x 聚类容差（pt）
 BLOCK_X_SHIFT = 20.0   # 行首 x 跳变超过此值即开新块（pt）
 
@@ -151,10 +154,15 @@ def detect_columns(body_words, page_width):
         ci = x0 + (i + 0.5) * BIN_W
         if abs(ci - c1) > PEAK_MASK and hist[i] > second:
             p2, second = i, hist[i]
-    bimodal = (p2 is not None
-               and hist[p2] >= 0.2 * hist[p1]
-               and abs(x0 + (p2 + 0.5) * BIN_W - c1) >= 0.15 * page_width)
-    if gutter_ok and bimodal:
+    peak_separated = (p2 is not None
+                      and abs(x0 + (p2 + 0.5) * BIN_W - c1) >= 0.15 * page_width)
+    bimodal = peak_separated and hist[p2] >= 0.2 * hist[p1]
+    # 普通双栏长文的右栏可能只有少量新段落，xMin 第二峰天然较弱；
+    # 有真实纵向栏间空带且两侧均有足量、相对均衡的词时，不要求其达到左峰的 20%。
+    right_count = len(body_words) - len(left)
+    balanced_two_sided = (peak_separated and min(len(left), right_count) >= 20
+                          and 0.1 <= frac <= 0.9)
+    if gutter_ok and (bimodal or balanced_two_sided):
         return "double", boundary
     return "single", None
 
@@ -296,26 +304,32 @@ def main():
             emit_text_only(args.out, f"bbox XHTML parse failed: {exc}")
 
     n_pages = len(pages)
-    page_w = max((p["width"] for p in pages), default=0) or 1
 
-    # 正文区（剔除上下各 8%）词集合 → 栏判定
-    body_words_all = []
-    for p in pages:
+    # 每页独立判栏；首页通栏、后续双栏等混合版式不能共用一个栏界。
+    band_lines_per_page = []   # [(kind, line)] 供页眉页脚判定（保留全宽行）
+    page_col_lines = []
+    page_layouts = []
+    for pi, p in enumerate(pages):
+        body_words = []
         for w in p["words"]:
             yc = (w["y0"] + w["y1"]) / 2
             if BAND * p["height"] <= yc <= (1 - BAND) * p["height"]:
-                body_words_all.append(w)
-    columns, boundary = detect_columns(body_words_all, page_w)
+                body_words.append(w)
+        columns, boundary = detect_columns(body_words, p["width"])
+        n_cols = 2 if columns == "double" else 1
+        page_layouts.append({
+            "page": pi + 1,
+            "columns": columns,
+            "column_boundary": round(boundary, 1) if boundary is not None else None,
+            "n_cols": n_cols,
+            "order": "left-to-right" if n_cols == 2 else "top-to-bottom",
+        })
 
-    def col_of(x):
-        if columns == "single" or boundary is None:
-            return 0
-        return 0 if x < boundary else 1
+        def col_of(x, columns=columns, boundary=boundary):
+            if columns == "single" or boundary is None:
+                return 0
+            return 0 if x < boundary else 1
 
-    # 逐页：带内行（页宽）与正文词（分栏）分别成行
-    band_lines_per_page = []   # [(kind, line)] 供页眉页脚判定
-    page_col_lines = []        # [{0:[...], 1:[...], "hf":[(kind,line)], "med_h":h}]
-    for p in pages:
         band_words, col_words = [], {0: [], 1: []}
         for w in p["words"]:
             yc = (w["y0"] + w["y1"]) / 2
@@ -330,17 +344,19 @@ def main():
             band_entries.append((kind, ln))
         band_lines_per_page.append(band_entries)
         heights = [ln["y1"] - ln["y0"]
-                   for c in (0, 1) for ln in words_to_lines(col_words[c])]
+                   for c in range(n_cols) for ln in words_to_lines(col_words[c])]
         page_col_lines.append({
-            "cols": {c: words_to_lines(col_words[c]) for c in (0, 1)},
+            "cols": {c: words_to_lines(col_words[c]) for c in range(n_cols)},
             "band": band_entries,
             "med_h": statistics.median(heights) if heights else 10.0,
+            "n_cols": n_cols,
+            "col_of": col_of,
         })
 
     # 正文区规范化行集合（页眉页脚判定的排除项：正文里出现的文本不是页眉页脚）
     body_keys = set()
     for rec in page_col_lines:
-        for c in (0, 1):
+        for c in range(rec["n_cols"]):
             for ln in rec["cols"][c]:
                 body_keys.add(norm_key(ln["text"]))
     hf = mark_headers_footers(n_pages, band_lines_per_page, body_keys)
@@ -351,8 +367,9 @@ def main():
     for pi, rec in enumerate(page_col_lines):
         med_h = rec["med_h"]
         page_blocks = []  # (sort_col, y0, kind, block)
-        # 带内行：命中重复判定 → header/footer 块；否则归并入正文行流
-        spill = {0: [], 1: []}
+        # 带内行先用全宽行做页眉页脚匹配；未命中者按词重新分列、重新成行。
+        # 绝不能把同时含左右栏文字的预合并整行直接作为 spill 注入某一栏。
+        spill_words = {c: [] for c in range(rec["n_cols"])}
         for kind, ln in rec["band"]:
             key = norm_key(ln["text"])
             if key in hf_keys.get(kind, set()):
@@ -361,10 +378,12 @@ def main():
                     "lines": [ln],
                 }))
             else:
-                spill[col_of(ln["x0"])].append(ln)
-        n_cols = 2 if columns == "double" else 1
+                for w in ln["words"]:
+                    spill_words[rec["col_of"](w["x0"])].append(w)
+        n_cols = rec["n_cols"]
         for c in range(n_cols):
-            lines = sorted(rec["cols"][c] + spill[c],
+            spill = words_to_lines(spill_words[c])
+            lines = sorted(rec["cols"][c] + spill,
                            key=lambda ln: (ln["y0"], ln["x0"]))
             for blk in lines_to_blocks(lines, med_h):
                 page_blocks.append((c, blk["y0"], "body", blk))
@@ -395,11 +414,17 @@ def main():
         {"kind": kind, "text": rec["text"], "pages": rec["pages"]}
         for kind in ("header", "footer") for rec in hf[kind].values()
     ]
+    layout_kinds = {layout["columns"] for layout in page_layouts}
+    columns = layout_kinds.pop() if len(layout_kinds) == 1 else "mixed"
+    boundaries = [layout["column_boundary"] for layout in page_layouts
+                  if layout["column_boundary"] is not None]
+    boundary = statistics.median(boundaries) if columns == "double" and boundaries else None
     result = {
         "pages": n_pages,
         "mode": "layout",
         "columns": columns,
-        "column_boundary": round(boundary, 1) if boundary else None,
+        "column_boundary": round(boundary, 1) if boundary is not None else None,
+        "page_layouts": page_layouts,
         "blocks": blocks_out,
         "headers_footers": hf_out,
         "tables": tables_out,

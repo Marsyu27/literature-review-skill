@@ -37,4 +37,4 @@
  "uncertain_relations":["E1 vs E4 是否可比较，原文未明说"]}
 ```
 
-> evidence 一律用 `{source_id, paragraph_id, quote, strength}` 四元组（示意 ID 见 kg-examples.md 文件头）。
+> 每个证据项一律用 `{source_id, paragraph_id, quote, strength}` 四元组；查询 evidence 保持数组，边 evidence 也必须是数组，节点可为单对象（示意 ID 见 kg-examples.md 文件头）。

@@ -18,13 +18,13 @@ references/provenance-metadata.md       # 来源元数据与溯源链
 references/quality-check.md             # 质量检查清单
 references/output-schema.md             # result.json / JSON-LD 契约（含 @context 约定）
 examples/nanopub-examples.md            # 20 条标注为示例的断言
-scripts/validate_nanopub.py             # 结果机检：词表/字段/@context 校验（纯标准库）
+scripts/validate_nanopub.py             # 导出前记录质检 + 最终 JSON-LD 严格质检（纯标准库）
 src/reproduce.py                        # 自检入口
 ```
 
 ## 调用方式
 
-加载 Skill 后，Agent 按 SKILL.md 六步流程：读输入→断言拆解→证据绑定→来源元数据→质量检查→JSON-LD 导出。
+加载 Skill 后，Agent 按 SKILL.md 六步流程：读输入→断言拆解→证据绑定→来源元数据→**导出前记录质检**→**JSON-LD 导出→最终严格质检**。导出前使用 `--records-only`，最终严格质检不带该参数，两步不能互相替代。
 
 ## 输出契约
 
@@ -36,7 +36,12 @@ src/reproduce.py                        # 自检入口
 
 ## 质检
 
-导出前运行 `python scripts/validate_nanopub.py /app/output/result.json`：校验谓词在受控词表内、每条记录 assertion/evidence/provenance 齐全且 evidence 非空、JSON-LD 输出含 `@context`；退出码非 0 时按错误清单修正。
+分两步机检，不能只做其中一步：
+
+1. 导出前：`python scripts/validate_nanopub.py --records-only /app/output/result.json`，校验谓词、assertion/evidence/provenance 与 evidence 状态规则。仅 `status=unverified` 的空 evidence 可 warning 放行，其他状态空 evidence 为 error。
+2. JSON-LD 导出后：`python scripts/validate_nanopub.py /app/output/result.json [extra.jsonld ...]` 做最终严格质检，要求至少一个 JSON-LD，并逐文档检查 `@context`、assertion/evidence/provenance/pubinfo 四类 named graph 和 URN 顶层 `@id` 形态。完全没有 JSON-LD 为 error/退出码 1，绝不打印“@context 校验完成”。
+
+两步退出码非 0 时均须按错误清单修正。partial 若有输出也必须满足输出契约，并在 `status_reason`/`uncertainties` 如实列出未完成范围与 JSON-LD 等缺口；warning 不能替代最终严格质检。
 
 ## 异常处理与限制
 
